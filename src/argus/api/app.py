@@ -120,6 +120,13 @@ def create_app() -> FastAPI:
     # Mount compiled dashboard UI if available
     dashboard_dist = Path(__file__).resolve().parents[3] / "dashboard" / "dist"
     if dashboard_dist.exists():
+        assets_dir = dashboard_dist / "assets"
+        if assets_dir.exists():
+            app.mount(
+                "/assets",
+                StaticFiles(directory=str(assets_dir)),
+                name="dashboard_assets",
+            )
         app.mount(
             "/dashboard",
             StaticFiles(directory=str(dashboard_dist), html=True),

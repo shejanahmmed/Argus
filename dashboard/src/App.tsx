@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Header } from "./components/Header";
 import { FleetOverview } from "./components/FleetOverview";
 import { LangGraphVisualizer } from "./components/LangGraphVisualizer";
@@ -15,11 +15,14 @@ import {
   ModelBenchmarkEntry,
   DowngradeRecommendation,
   ContainerLog,
+  ViewMode,
 } from "./types";
 
 export const App: React.FC = () => {
   const [wsConnected, setWsConnected] = useState<boolean>(false);
   const [seeding, setSeeding] = useState<boolean>(false);
+  const [activeView, setActiveView] = useState<ViewMode>("ALL");
+  const [businessValueUsd, setBusinessValueUsd] = useState<number>(100);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
@@ -32,21 +35,9 @@ export const App: React.FC = () => {
   const [benchmarks, setBenchmarks] = useState<ModelBenchmarkEntry[]>([]);
   const [recommendations, setRecommendations] = useState<DowngradeRecommendation[]>([]);
   const [logs, setLogs] = useState<ContainerLog[]>([]);
+  const autoSeededRef = useRef<boolean>(false);
 
-  const fetchSessions = useCallback(async () => {
-    try {
-      const res = await fetch("/api/v1/telemetry/sessions");
-      if (res.ok) {
-        const data: AgentSession[] = await res.json();
-        setSessions(data);
-        if (data.length > 0 && !selectedSessionId) {
-          setSelectedSessionId(data[0].session_id);
-        }
-      }
-    } catch {
-      // Offline fallback
-    }
-  }, [selectedSessionId]);
+  const selectedSession = sessions.find((s) => s.session_id === selectedSessionId) || null;
 
   const fetchCloudWatchLogs = useCallback(async () => {
     try {
@@ -70,7 +61,10 @@ export const App: React.FC = () => {
       const recRes = await fetch("/api/v1/attribution/benchmarks/recommend", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ current_model: "claude-3-5-sonnet", min_acceptable_accuracy: 0.5 }),
+        body: JSON.stringify({
+          current_model: "claude-3-5-sonnet",
+          min_acceptable_accuracy: 0.5,
+        }),
       });
       if (recRes.ok) {
         const recData = await recRes.json();
@@ -81,41 +75,93 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  const fetchSessionDetails = useCallback(async (sessionId: string) => {
-    try {
-      const [spansRes, toolsRes, cpRes, auditRes, roiRes] = await Promise.all([
-        fetch(`/api/v1/telemetry/sessions/${sessionId}/spans`),
-        fetch(`/api/v1/c2/${sessionId}/pending-tools`),
-        fetch(`/api/v1/c2/${sessionId}/checkpoints/latest`),
-        fetch(`/api/v1/c2/${sessionId}/audit-log`),
-        fetch(`/api/v1/attribution/roi/${sessionId}?assigned_business_value_usd=100.0`),
-      ]);
+  const fetchSessionDetails = useCallback(
+    async (sessionId: string, assignedValue: number = businessValueUsd) => {
+      try {
+        const [spansRes, toolsRes, cpRes, auditRes, roiRes] = await Promise.all([
+          fetch(`/api/v1/telemetry/sessions/${sessionId}/spans`),
+          fetch(`/api/v1/c2/${sessionId}/pending-tools`),
+          fetch(`/api/v1/c2/${sessionId}/checkpoints/latest`),
+          fetch(`/api/v1/c2/${sessionId}/audit-log`),
+          fetch(
+            `/api/v1/attribution/roi/${sessionId}?assigned_business_value_usd=${assignedValue}`
+          ),
+        ]);
 
-      if (spansRes.ok) {
-        const sData: ArgusSpan[] = await spansRes.json();
-        setSpans(sData);
-        if (sData.length > 0) setSelectedSpan(sData[sData.length - 1]);
+        if (spansRes.ok) {
+          const sData: ArgusSpan[] = await spansRes.json();
+          setSpans(sData);
+          if (sData.length > 0) setSelectedSpan(sData[sData.length - 1]);
+        }
+        if (toolsRes.ok) {
+          const tData: PendingToolCall[] = await toolsRes.json();
+          setPendingTools(tData);
+        }
+        if (cpRes.ok) {
+          const cpData: CheckpointRecord | null = await cpRes.json();
+          setLatestCheckpoint(cpData);
+        }
+        if (auditRes.ok) {
+          const auditData: AuditLogResponse = await auditRes.json();
+          setAuditLog(auditData);
+        }
+        if (roiRes.ok) {
+          const rData: WorkflowROIAttribution = await roiRes.json();
+          setRoi(rData);
+        }
+      } catch {
+        // Offline fallback
       }
-      if (toolsRes.ok) {
-        const tData: PendingToolCall[] = await toolsRes.json();
-        setPendingTools(tData);
+    },
+    [businessValueUsd]
+  );
+
+  const handleSeedScenario = useCallback(async () => {
+    setSeeding(true);
+    setStatusMessage("Seeding multi-agent telemetry scenario...");
+    try {
+      const res = await fetch("/api/v1/demo/seed", { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        const sessRes = await fetch("/api/v1/telemetry/sessions");
+        if (sessRes.ok) {
+          const sessList: AgentSession[] = await sessRes.json();
+          setSessions(sessList);
+        }
+        await fetchCloudWatchLogs();
+        const targetId = data.tripped_session_id || data.paused_c2_session_id;
+        if (targetId) {
+          setSelectedSessionId(targetId);
+          await fetchSessionDetails(targetId);
+        }
+        setStatusMessage(
+          "Seeded 3 live agent sessions: LangGraph Recursive Loop, CrewAI Paused MCP Gate, AutoGPT FinOps."
+        );
       }
-      if (cpRes.ok) {
-        const cpData: CheckpointRecord | null = await cpRes.json();
-        setLatestCheckpoint(cpData);
-      }
-      if (auditRes.ok) {
-        const auditData: AuditLogResponse = await auditRes.json();
-        setAuditLog(auditData);
-      }
-      if (roiRes.ok) {
-        const rData: WorkflowROIAttribution = await roiRes.json();
-        setRoi(rData);
+    } finally {
+      setSeeding(false);
+    }
+  }, [fetchCloudWatchLogs, fetchSessionDetails]);
+
+  const fetchSessions = useCallback(async () => {
+    try {
+      const res = await fetch("/api/v1/telemetry/sessions");
+      if (res.ok) {
+        const data: AgentSession[] = await res.json();
+        if (data.length === 0 && !autoSeededRef.current) {
+          autoSeededRef.current = true;
+          await handleSeedScenario();
+          return;
+        }
+        setSessions(data);
+        if (data.length > 0 && !selectedSessionId) {
+          setSelectedSessionId(data[0].session_id);
+        }
       }
     } catch {
       // Offline fallback
     }
-  }, []);
+  }, [selectedSessionId, handleSeedScenario]);
 
   useEffect(() => {
     fetchSessions();
@@ -125,9 +171,9 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     if (selectedSessionId) {
-      fetchSessionDetails(selectedSessionId);
+      fetchSessionDetails(selectedSessionId, businessValueUsd);
     }
-  }, [selectedSessionId, fetchSessionDetails]);
+  }, [selectedSessionId, businessValueUsd, fetchSessionDetails]);
 
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -190,23 +236,76 @@ export const App: React.FC = () => {
     };
   }, [fetchSessions, fetchSessionDetails, fetchCloudWatchLogs, selectedSessionId]);
 
-  const handleSeedScenario = async () => {
-    setSeeding(true);
-    setStatusMessage("Seeding multi-agent scenario...");
-    try {
-      const res = await fetch("/api/v1/demo/seed", { method: "POST" });
-      if (res.ok) {
-        const data = await res.json();
-        await fetchSessions();
-        await fetchCloudWatchLogs();
-        if (data.paused_c2_session_id) {
-          setSelectedSessionId(data.paused_c2_session_id);
-          await fetchSessionDetails(data.paused_c2_session_id);
-        }
-        setStatusMessage("Seeded 3 live agent sessions (LangGraph Loop, CrewAI Paused C2, AutoGPT FinOps).");
+  const handleSimulateLoopStep = async () => {
+    if (!selectedSessionId) return;
+    const res = await fetch(
+      `/api/v1/telemetry/otlp?default_session_id=${selectedSessionId}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          spans: [
+            {
+              name: "tool:query_orders_db",
+              attributes: {
+                "openinference.span.kind": "TOOL",
+                "gen_ai.operation.name": "execute_tool",
+                "argus.framework": selectedSession?.framework || "langgraph",
+                "argus.cost.usd": 0.0025,
+                tool_name: "query_orders_db",
+                input_payload: JSON.stringify({
+                  sql: "SELECT * FROM orders WHERE order_id = 'ORD-9941'",
+                }),
+                output_payload: JSON.stringify({
+                  content: "Retrying identical SQL query on replica...",
+                }),
+              },
+            },
+          ],
+        }),
       }
-    } finally {
-      setSeeding(false);
+    );
+    if (res.ok) {
+      const data = await res.json();
+      if (data.tripped_circuit_breaker) {
+        setStatusMessage(
+          `CIRCUIT BREAKER TRIPPED! ${data.warning || "Repetitive tool loop halted."}`
+        );
+      } else {
+        setStatusMessage(
+          "Injected repetitive tool span (click again to trip 3-Tier Loop Breaker)."
+        );
+      }
+      fetchSessions();
+      fetchSessionDetails(selectedSessionId);
+    }
+  };
+
+  const handleSimulateMcpAttack = async () => {
+    if (!selectedSessionId) return;
+    const callId = `mcp_${Math.random().toString(36).substring(2, 8)}`;
+    const res = await fetch("/api/v1/governance/mcp/intercept", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session_id: selectedSessionId,
+        tool_call_id: callId,
+        tool_name: "drop_production_ledger",
+        tool_args: {
+          schema: "billing_prod",
+          cascade: true,
+          note: "Simulated high-risk MCP call",
+        },
+        estimated_cost_usd: 0.005,
+        hard_cap_usd: 50.0,
+      }),
+    });
+    if (res.ok) {
+      setStatusMessage(
+        `MCP Proxy intercepted destructive tool [drop_production_ledger] (${callId}) and paused session for C2 review!`
+      );
+      fetchSessions();
+      fetchSessionDetails(selectedSessionId);
     }
   };
 
@@ -214,7 +313,10 @@ export const App: React.FC = () => {
     const res = await fetch(`/api/v1/c2/${sessionId}/pause`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ operator_id: "human_op", reason: "Operator manual pause" }),
+      body: JSON.stringify({
+        operator_id: "operator_admin",
+        reason: "Operator manual C2 pause",
+      }),
     });
     if (res.ok) {
       setStatusMessage(`Session ${sessionId.substring(0, 8)} transitioned to PAUSED_C2.`);
@@ -227,7 +329,10 @@ export const App: React.FC = () => {
     const res = await fetch(`/api/v1/c2/${sessionId}/resume`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ operator_id: "human_op", reason: "Operator resumed session" }),
+      body: JSON.stringify({
+        operator_id: "operator_admin",
+        reason: "Operator resumed session",
+      }),
     });
     if (res.ok) {
       setStatusMessage(`Session ${sessionId.substring(0, 8)} resumed (loop tracker cleared).`);
@@ -240,7 +345,10 @@ export const App: React.FC = () => {
     const res = await fetch(`/api/v1/c2/${sessionId}/terminate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ operator_id: "human_op", reason: "Operator kill switch" }),
+      body: JSON.stringify({
+        operator_id: "operator_admin",
+        reason: "Operator kill switch",
+      }),
     });
     if (res.ok) {
       setStatusMessage(`Session ${sessionId.substring(0, 8)} terminated.`);
@@ -257,7 +365,7 @@ export const App: React.FC = () => {
       body: JSON.stringify({
         tool_call_id: toolCallId,
         decision: "approve",
-        operator_id: "human_op",
+        operator_id: "operator_admin",
         reason: "Security inspection cleared",
       }),
     });
@@ -279,7 +387,7 @@ export const App: React.FC = () => {
         tool_call_id: toolCallId,
         decision: "edit",
         modified_args: modifiedArgs,
-        operator_id: "human_op",
+        operator_id: "operator_admin",
         reason: "Parameters sanitized for sandbox execution",
       }),
     });
@@ -301,7 +409,7 @@ export const App: React.FC = () => {
         tool_call_id: toolCallId,
         decision: "mock",
         mock_output: mockOutput,
-        operator_id: "human_op",
+        operator_id: "operator_admin",
         reason: "Injected deterministic mock fixture",
       }),
     });
@@ -320,7 +428,7 @@ export const App: React.FC = () => {
         tool_call_id: toolCallId,
         decision: "reject",
         rejection_reason: reason,
-        operator_id: "human_op",
+        operator_id: "operator_admin",
         reason: "Violated organizational safety guardrail",
       }),
     });
@@ -343,7 +451,7 @@ export const App: React.FC = () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          operator_id: "human_op",
+          operator_id: "operator_admin",
           expected_parent_checkpoint_id: expectedCpId,
           patches: patches,
           reason: "Manual RFC 6902 memory mutation",
@@ -352,7 +460,7 @@ export const App: React.FC = () => {
       if (res.ok) {
         const newCp: CheckpointRecord = await res.json();
         setStatusMessage(
-          `RFC 6902 Patch Applied! New Checkpoint: ${newCp.checkpoint_id.substring(0, 8)}`
+          `RFC 6902 Patch Applied! New Checkpoint Head: ${newCp.checkpoint_id.substring(0, 8)}`
         );
         fetchSessions();
         fetchSessionDetails(selectedSessionId);
@@ -366,17 +474,23 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-black text-[#e0e0e0] font-mono">
+    <div className="flex flex-col min-h-screen bg-black text-[#f2f2f2] font-mono">
       <Header
         wsConnected={wsConnected}
         sessions={sessions}
         pendingInterventionsCount={pendingTools.length}
+        activeView={activeView}
+        onSelectView={setActiveView}
         onSeedScenario={handleSeedScenario}
+        onSimulateLoopStep={handleSimulateLoopStep}
+        onSimulateMcpAttack={handleSimulateMcpAttack}
         seeding={seeding}
+        hasSelectedSession={Boolean(selectedSessionId)}
       />
 
-      <main className="flex-1 p-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <div className="lg:col-span-5 flex flex-col space-y-4">
+      <main className="flex-1 p-5 grid grid-cols-1 lg:grid-cols-12 gap-5 max-w-[1920px] w-full mx-auto">
+        {/* Left Tactical Column: Agent Fleet & Container Logs */}
+        <div className="lg:col-span-4 flex flex-col gap-5">
           <FleetOverview
             sessions={sessions}
             selectedSessionId={selectedSessionId}
@@ -384,41 +498,54 @@ export const App: React.FC = () => {
             onPause={handlePause}
             onResume={handleResume}
             onTerminate={handleTerminate}
+            onSeedScenario={handleSeedScenario}
           />
-          <LogWaterfall logs={logs} />
+          {(activeView === "ALL" || activeView === "TOPOLOGY") && (
+            <LogWaterfall logs={logs} />
+          )}
         </div>
 
-        <div className="lg:col-span-7 flex flex-col space-y-4">
-          <LangGraphVisualizer
-            spans={spans}
-            selectedSpan={selectedSpan}
-            onSelectSpan={(span) => setSelectedSpan(span)}
-          />
+        {/* Right Command Column: Topology, C2 Console & FinOps */}
+        <div className="lg:col-span-8 flex flex-col gap-5">
+          {(activeView === "ALL" || activeView === "TOPOLOGY") && (
+            <LangGraphVisualizer
+              spans={spans}
+              selectedSpan={selectedSpan}
+              onSelectSpan={(span) => setSelectedSpan(span)}
+            />
+          )}
 
-          <C2ControlPanel
-            sessionId={selectedSessionId}
-            pendingTools={pendingTools}
-            latestCheckpoint={latestCheckpoint}
-            auditLog={auditLog}
-            statusMessage={statusMessage}
-            onApproveTool={handleApproveTool}
-            onEditTool={handleEditTool}
-            onMockTool={handleMockTool}
-            onRejectTool={handleRejectTool}
-            onApplyPatch={handleApplyPatch}
-          />
+          {(activeView === "ALL" || activeView === "C2_LAB") && (
+            <C2ControlPanel
+              sessionId={selectedSessionId}
+              sessionStatus={selectedSession?.status}
+              pendingTools={pendingTools}
+              latestCheckpoint={latestCheckpoint}
+              auditLog={auditLog}
+              statusMessage={statusMessage}
+              onApproveTool={handleApproveTool}
+              onEditTool={handleEditTool}
+              onMockTool={handleMockTool}
+              onRejectTool={handleRejectTool}
+              onApplyPatch={handleApplyPatch}
+            />
+          )}
 
-          <RoiAndBenchmarks
-            roi={roi}
-            benchmarks={benchmarks}
-            recommendations={recommendations}
-          />
+          {(activeView === "ALL" || activeView === "FINOPS") && (
+            <RoiAndBenchmarks
+              roi={roi}
+              benchmarks={benchmarks}
+              recommendations={recommendations}
+              businessValueUsd={businessValueUsd}
+              onChangeBusinessValue={(val) => setBusinessValueUsd(val)}
+            />
+          )}
         </div>
       </main>
 
-      <footer className="border-t border-[#181818] bg-[#000000] px-6 py-2 flex justify-between text-[10px] text-[#555555]">
-        <div>ARGUS AGENT GOVERNANCE CONTROL PLANE // LOCAL ZERO-SPEND STACK</div>
-        <div>OPENTELEMETRY • LANGGRAPH • CREWAI • PHOENIX OSS • RFC 6902</div>
+      <footer className="border-t border-[#1c1c1c] bg-[#030303] px-6 py-3 flex flex-wrap justify-between items-center gap-2 text-[10px] text-[#666666]">
+        <div>ARGUS AGENT GOVERNANCE CONTROL PLANE // ZERO-SPEND SELF-HOSTED INFRASTRUCTURE</div>
+        <div>OPENTELEMETRY GENAI • ARIZE PHOENIX • LANGGRAPH • MCP PROXY • RFC 6902 • SHA-256</div>
       </footer>
     </div>
   );

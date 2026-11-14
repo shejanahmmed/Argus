@@ -8,6 +8,8 @@ export type SessionStatus =
 
 export type AgentFramework = "langgraph" | "lcel" | "crewai" | "autogpt" | "mcp" | "custom";
 
+export type ViewMode = "ALL" | "TOPOLOGY" | "C2_LAB" | "FINOPS";
+
 export interface AgentSession {
   session_id: string;
   tenant_id: string;
@@ -42,7 +44,9 @@ export interface ArgusSpan {
   latency_ms: number;
   input_payload: Record<string, unknown>;
   output_payload: Record<string, unknown>;
+  state_diff?: Array<{ op: string; path: string; value?: unknown }>;
   attributes: Record<string, string | number | boolean>;
+  redacted?: boolean;
   started_at: string;
   ended_at?: string;
 }
