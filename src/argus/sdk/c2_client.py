@@ -12,6 +12,7 @@ from typing import Any
 
 import httpx
 
+from argus.c2.lease_manager import HeartbeatStatus
 from argus.core.schemas import (
     AgentFramework,
     AgentSession,
@@ -170,3 +171,18 @@ class ArgusC2Client:
         pending_raw = data.get("pending_tool_call")
         pending = PendingToolCall.model_validate(pending_raw) if pending_raw else None
         return verdict, pending
+
+    async def heartbeat(
+        self,
+        *,
+        session_id: uuid.UUID,
+        worker_id: str,
+        ttl_seconds: float = 300.0,
+    ) -> HeartbeatStatus:
+        """Send a distributed worker heartbeat and retrieve C2 control directives."""
+        data = await self._request(
+            "POST",
+            f"/api/v1/c2/{session_id}/heartbeat",
+            json_body={"worker_id": worker_id, "ttl_seconds": ttl_seconds},
+        )
+        return HeartbeatStatus.model_validate(data)

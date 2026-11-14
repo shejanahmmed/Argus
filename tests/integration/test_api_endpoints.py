@@ -582,3 +582,61 @@ async def test_argus_c2_sdk_client(auth_headers: dict[str, str]) -> None:
         assert verdict.recommended_action.value == "PAUSE_FOR_C2"
         assert pending is not None
         assert pending.tool_call_id == "sdk_tool_1"
+
+        hb = await sdk.heartbeat(
+            session_id=session_id,
+            worker_id="sdk_worker_pod_1",
+            ttl_seconds=120.0,
+        )
+        assert hb.directive == "PAUSE_FOR_C2"
+        assert hb.worker_id == "sdk_worker_pod_1"
+
+
+@pytest.mark.asyncio
+async def test_bearer_token_and_w3c_baggage_auth_and_lease_reap() -> None:
+    container = get_container()
+    ctx = TenantContext(
+        tenant_id="bearer_tenant",
+        workspace_id="bearer_ws",
+        actor_id="bearer_admin",
+        role=Role.ADMIN,
+    )
+    token = container.authenticator.issue_token(ctx, ttl_seconds=300)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        # 1. Authenticate using HMAC Bearer token
+        create_resp = await client.post(
+            "/api/v1/telemetry/sessions",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "workflow_id": "wf_bearer",
+                "agent_name": "bearer_agent",
+                "framework": "langgraph",
+                "budget_cap_usd": 30.0,
+            },
+        )
+        assert create_resp.status_code == 200
+        session_id = create_resp.json()["session_id"]
+
+        # 2. Authenticate using W3C OpenTelemetry baggage header
+        baggage_header = (
+            "argus.tenant_id=bearer_tenant,argus.workspace_id=bearer_ws,"
+            "argus.actor_id=baggage_op,argus.role=OPERATOR"
+        )
+        list_resp = await client.get(
+            "/api/v1/telemetry/sessions",
+            headers={"baggage": baggage_header},
+        )
+        assert list_resp.status_code == 200
+        assert len(list_resp.json()) == 1
+        assert list_resp.json()[0]["session_id"] == session_id
+
+        # 3. Call Dead-Man's Switch lease reaper endpoint
+        reap_resp = await client.post(
+            "/api/v1/c2/leases/reap",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert reap_resp.status_code == 200
+        assert reap_resp.json()["reaped_count"] == 0

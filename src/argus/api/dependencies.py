@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Annotated
 
 from fastapi import Header
@@ -13,10 +14,18 @@ from argus.adapters_infra.in_memory import (
     InMemoryEventBus,
     InMemoryTraceStore,
 )
+from argus.adapters_infra.sqlite_store import (
+    SqliteAuditStore,
+    SqliteBudgetStore,
+    SqliteControlStore,
+    SqliteEngine,
+    SqliteTraceStore,
+)
 from argus.attribution.evaluator import TrajectoryEvaluator
 from argus.attribution.hf_benchmarks import HuggingFaceBenchmarkAnalyzer
 from argus.attribution.roi_engine import ROIEngine
 from argus.c2.audit_ledger import C2AuditLedger
+from argus.c2.lease_manager import C2LeaseManager
 from argus.c2.state_manager import C2StateManager
 from argus.c2.tool_override import ToolOverrideEngine
 from argus.core.schemas import PendingToolCall
@@ -33,45 +42,42 @@ from argus.ports.repositories import (
     EventBus,
     TraceStore,
 )
+from argus.security.auth import HmacTokenAuthenticator, parse_w3c_baggage
 
 
 class AppContainer:
     """Singleton container managing operational state, stores, and engines."""
 
-    def __init__(self) -> None:
-        self.trace_store: TraceStore = InMemoryTraceStore()
-        self.control_store: ControlStore = InMemoryControlStore()
-        self.budget_store: BudgetStore = InMemoryBudgetStore()
-        self.audit_store: AuditStore = InMemoryAuditStore()
-        self.event_bus: EventBus = InMemoryEventBus()
-
-        self.audit_ledger = C2AuditLedger(audit_store=self.audit_store)
-        self.loop_detector = LoopDetector()
-        self.budget_guard = BudgetGuard(backend=self.budget_store)
-        self.mcp_proxy = McpGovernanceProxy(
-            loop_detector=self.loop_detector,
-            budget_guard=self.budget_guard,
-        )
-        self.c2_state_manager = C2StateManager(control_store=self.control_store)
-        self.tool_override_engine = ToolOverrideEngine()
-        self.roi_engine = ROIEngine(trace_store=self.trace_store)
-        self.trajectory_evaluator = TrajectoryEvaluator()
-        self.benchmark_analyzer = HuggingFaceBenchmarkAnalyzer()
-        self.phoenix_bridge = ArizePhoenixBridge()
+    def __init__(self, backend: str | None = None, db_path: str | None = None) -> None:
+        self._backend = (backend or os.environ.get("ARGUS_STORAGE_BACKEND", "memory")).lower()
+        self._db_path = db_path or os.environ.get("ARGUS_DB_PATH", ".argus_logs/argus.db")
+        self._sqlite_engine: SqliteEngine | None = None
+        self.authenticator = HmacTokenAuthenticator()
 
         # In-memory tracking for pending intercepted tool calls: session_id -> list[PendingToolCall]
         self.pending_tool_calls: dict[str, list[PendingToolCall]] = {}
         # Recent correlated container logs ring buffer
         self.container_logs: list[CorrelatedContainerLog] = []
 
-    def reset(self) -> None:
-        """Reset internal stores to clean state for test isolation."""
-        self.trace_store = InMemoryTraceStore()
-        self.control_store = InMemoryControlStore()
-        self.budget_store = InMemoryBudgetStore()
-        self.audit_store = InMemoryAuditStore()
-        self.event_bus = InMemoryEventBus()
+        self._init_stores()
 
+    def _init_stores(self) -> None:
+        if self._backend == "sqlite":
+            if self._sqlite_engine is None:
+                self._sqlite_engine = SqliteEngine(self._db_path)
+            else:
+                self._sqlite_engine.reset_tables()
+            self.trace_store: TraceStore = SqliteTraceStore(self._sqlite_engine)
+            self.control_store: ControlStore = SqliteControlStore(self._sqlite_engine)
+            self.budget_store: BudgetStore = SqliteBudgetStore(self._sqlite_engine)
+            self.audit_store: AuditStore = SqliteAuditStore(self._sqlite_engine)
+        else:
+            self.trace_store = InMemoryTraceStore()
+            self.control_store = InMemoryControlStore()
+            self.budget_store = InMemoryBudgetStore()
+            self.audit_store = InMemoryAuditStore()
+
+        self.event_bus: EventBus = InMemoryEventBus()
         self.audit_ledger = C2AuditLedger(audit_store=self.audit_store)
         self.loop_detector = LoopDetector()
         self.budget_guard = BudgetGuard(backend=self.budget_store)
@@ -80,9 +86,19 @@ class AppContainer:
             budget_guard=self.budget_guard,
         )
         self.c2_state_manager = C2StateManager(control_store=self.control_store)
+        self.lease_manager = C2LeaseManager(
+            control_store=self.control_store,
+            audit_store=self.audit_store,
+        )
         self.tool_override_engine = ToolOverrideEngine()
         self.roi_engine = ROIEngine(trace_store=self.trace_store)
         self.trajectory_evaluator = TrajectoryEvaluator()
+        self.benchmark_analyzer = HuggingFaceBenchmarkAnalyzer()
+        self.phoenix_bridge = ArizePhoenixBridge()
+
+    def reset(self) -> None:
+        """Reset internal stores to clean state for test isolation."""
+        self._init_stores()
         self.pending_tool_calls.clear()
         self.container_logs.clear()
 
@@ -96,20 +112,28 @@ def get_container() -> AppContainer:
 
 
 def get_tenant_context(
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+    baggage: Annotated[str | None, Header(alias="baggage")] = None,
     x_tenant_id: Annotated[str | None, Header(alias="X-Tenant-ID")] = None,
     x_workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
     x_actor_id: Annotated[str | None, Header(alias="X-Actor-ID")] = None,
     x_role: Annotated[str | None, Header(alias="X-Role")] = None,
 ) -> TenantContext:
-    """Extract authenticated TenantContext from incoming request headers."""
-    tenant_id = x_tenant_id or "default_tenant"
-    workspace_id = x_workspace_id or "default_workspace"
-    actor_id = x_actor_id or "operator_admin"
+    """Extract authenticated TenantContext from Bearer token, explicit headers, or W3C baggage."""
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization[7:].strip()
+        return _container.authenticator.verify_token(token)
+
+    baggage_map = parse_w3c_baggage(baggage)
+    tenant_id = x_tenant_id or baggage_map.get("argus.tenant_id") or "default_tenant"
+    workspace_id = x_workspace_id or baggage_map.get("argus.workspace_id") or "default_workspace"
+    actor_id = x_actor_id or baggage_map.get("argus.actor_id") or "operator_admin"
+    raw_role = x_role or baggage_map.get("argus.role")
 
     role_val = Role.ADMIN
-    if x_role:
+    if raw_role:
         try:
-            role_val = Role(x_role.upper())
+            role_val = Role(raw_role.upper())
         except ValueError:
             role_val = Role.OPERATOR
 

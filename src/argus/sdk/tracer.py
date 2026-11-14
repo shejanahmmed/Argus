@@ -1,15 +1,18 @@
 """Core cross-platform OpenTelemetry + OpenInference telemetry tracer.
 
 Constructs strictly validated ArgusSpan objects with chronological UUIDv7 identifiers,
-microsecond dotted_order hierarchy tracking, edge PII scrubbing, and non-blocking export.
+microsecond dotted_order hierarchy tracking, edge PII scrubbing, non-blocking export,
+and fail-open local JSONL spooling.
 """
 
 from __future__ import annotations
 
+import functools
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from typing import Any
+from pathlib import Path
+from typing import Any, ParamSpec, TypeVar
 
 from argus.core.ids import build_dotted_order, new_uuid7, utc_now
 from argus.core.schemas import (
@@ -30,6 +33,9 @@ from argus.sdk.context import (
 )
 from argus.security.redactor import EdgeRedactor
 
+P = ParamSpec("P")
+R = TypeVar("R")
+
 
 class ArgusTracer:
     """Enterprise OpenTelemetry + OpenInference tracer for autonomous AI agents."""
@@ -40,10 +46,23 @@ class ArgusTracer:
         trace_store: TraceStore,
         redactor: EdgeRedactor | None = None,
         default_framework: AgentFramework = AgentFramework.CUSTOM,
+        spool_path: Path | str | None = Path(".argus_logs/spool_spans.jsonl"),
     ) -> None:
         self._store = trace_store
         self._redactor = redactor or EdgeRedactor()
         self._default_framework = default_framework
+        self._spool_path = Path(spool_path) if spool_path is not None else None
+
+    def _spool_failed_span(self, span: ArgusSpan) -> None:
+        """Fail-open fallback: write span to local JSONL spool so agent runtime never crashes."""
+        if self._spool_path is None:
+            return
+        try:
+            self._spool_path.parent.mkdir(parents=True, exist_ok=True)
+            with self._spool_path.open("a", encoding="utf-8") as handle:
+                handle.write(span.model_dump_json() + "\n")
+        except Exception:
+            pass
 
     @asynccontextmanager
     async def start_span(
@@ -142,7 +161,50 @@ class ArgusTracer:
                     ended_at=ended_at,
                 )
 
-                await self._store.append_spans(ctx, [span])
+                try:
+                    await self._store.append_spans(ctx, [span])
+                except Exception:
+                    # Telemetry export must fail OPEN so observability outages never crash agents
+                    self._spool_failed_span(span)
+
+    def trace(
+        self,
+        ctx: TenantContext,
+        *,
+        name: str | None = None,
+        span_kind: SpanKind = SpanKind.CHAIN,
+        operation_name: OperationName = OperationName.STATE_TRANSITION,
+        framework: AgentFramework | None = None,
+    ) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
+        """Decorator wrapping an async function in a traced ArgusSpan with PII redaction."""
+
+        def _decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
+            span_name = name or func.__name__
+
+            @functools.wraps(func)
+            async def _wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+                captured_in: dict[str, Any] = {
+                    k: str(v) if not isinstance(v, (str, int, float, bool, dict, list)) else v
+                    for k, v in kwargs.items()
+                }
+                async with self.start_span(
+                    ctx,
+                    name=span_name,
+                    span_kind=span_kind,
+                    operation_name=operation_name,
+                    framework=framework,
+                    input_payload=captured_in,
+                ) as builder:
+                    result = await func(*args, **kwargs)
+                    if isinstance(result, dict):
+                        builder.set_output(result)
+                    else:
+                        builder.set_output({"result": str(result)})
+                    return result
+
+            return _wrapper
+
+        return _decorator
 
 
 class SpanBuilder:
@@ -197,7 +259,6 @@ class SpanBuilder:
 
     def append_state_diff(self, op: str, path: str, value: Any = None) -> None:
         """Record an RFC 6902 state patch operation."""
-        # Convert valid op string to literal
         valid_ops = {"add", "remove", "replace", "move", "copy", "test"}
         if op not in valid_ops:
             raise ValueError(f"Invalid patch op: {op}")
