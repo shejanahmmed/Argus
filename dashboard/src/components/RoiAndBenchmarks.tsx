@@ -1,5 +1,5 @@
 import React from "react";
-import { TrendingUp, Zap, ArrowDownRight, Award, BarChart3 } from "lucide-react";
+import { TrendingUp, Zap, ArrowDownRight, Award, CircleDollarSign } from "lucide-react";
 import {
   WorkflowROIAttribution,
   ModelBenchmarkEntry,
@@ -24,84 +24,85 @@ export const RoiAndBenchmarks: React.FC<RoiAndBenchmarksProps> = ({
   onChangeBusinessValue,
 }) => {
   return (
-    <div className="terminal-card flex flex-col font-mono text-xs">
-      <div className="dot-matrix-header flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <BarChart3 className="h-4 w-4 text-[#00ff66]" />
-          <span className="text-[#00ff66]">
-            [ 04 // FINANCIAL ROI ATTRIBUTION & HUGGING FACE PARETO MATRIX ]
-          </span>
+    <div className="rounded-xl border border-zinc-800 bg-[#121215] flex flex-col shadow-sm">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+        <div className="flex items-center gap-2.5">
+          <CircleDollarSign className="h-4 w-4 text-zinc-400" />
+          <h2 className="text-sm font-semibold text-zinc-100">Financial ROI Attribution & Benchmarks</h2>
         </div>
 
-        <div className="flex items-center gap-1.5 text-[10px]">
-          <span className="text-[#737373] mr-1">TASK VALUE USD:</span>
-          {VALUE_PRESETS.map((val) => (
-            <button
-              key={val}
-              onClick={() => onChangeBusinessValue(val)}
-              className={`px-2 py-0.5 border font-bold cursor-pointer transition-colors ${
-                businessValueUsd === val
-                  ? "border-[#00ff66] bg-[#00ff66] text-black"
-                  : "border-[#262626] bg-[#0a0a0a] text-[#888888] hover:text-white"
-              }`}
-            >
-              ${val}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-zinc-500 mr-1">Task Value:</span>
+          <div className="flex items-center rounded-lg bg-zinc-900 p-0.5 border border-zinc-800">
+            {VALUE_PRESETS.map((val) => (
+              <button
+                key={val}
+                onClick={() => onChangeBusinessValue(val)}
+                className={`rounded px-2.5 py-1 text-xs font-medium cursor-pointer transition-colors ${
+                  businessValueUsd === val
+                    ? "bg-zinc-800 text-white"
+                    : "text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                ${val}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 p-4">
-        {/* Left: Financial Attribution & Trajectory Evaluation */}
-        <div className="flex flex-col border border-[#222222] bg-[#060606] p-4">
-          <div className="flex items-center justify-between pb-3 mb-3 border-b border-[#1a1a1a]">
-            <span className="flex items-center gap-2 text-white font-bold">
-              <TrendingUp className="h-4 w-4 text-[#00ff66]" />
-              <span>WORKFLOW FINANCIAL ATTRIBUTION</span>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 p-5">
+        {/* Left: Financial Attribution & Trajectory Scores */}
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 flex flex-col">
+          <div className="flex items-center justify-between pb-3 mb-3 border-b border-zinc-800">
+            <span className="flex items-center gap-2 text-sm font-medium text-white">
+              <TrendingUp className="h-4 w-4 text-emerald-400" />
+              <span>Workflow Financial Breakdown</span>
             </span>
             {roi && (
               <span
-                className={`px-2 py-0.5 text-[10px] font-bold border ${
+                className={`rounded-full px-2 py-0.5 text-xs font-medium border ${
                   roi.task_completed
-                    ? "border-[#00ff66] bg-[#001808] text-[#00ff66]"
-                    : "border-[#ffb000] bg-[#1f1300] text-[#ffb000]"
+                    ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+                    : "border-amber-500/20 bg-amber-500/10 text-amber-400"
                 }`}
               >
-                {roi.task_completed ? "GOAL VERIFIED" : "IN PROGRESS / HALTED"}
+                {roi.task_completed ? "Goal Verified" : "In Progress"}
               </span>
             )}
           </div>
 
           {roi ? (
-            <div className="space-y-3.5 flex-1 flex flex-col justify-between">
-              <div className="grid grid-cols-2 gap-2.5 text-[11px]">
-                <div className="border border-[#1c1c1c] p-3 bg-[#030303]">
-                  <div className="text-[#737373] text-[10px] mb-0.5">ASSIGNED BUSINESS VALUE</div>
-                  <div className="text-white font-bold text-base">
+            <div className="space-y-4 flex-1 flex flex-col justify-between">
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                  <div className="text-zinc-500 text-[11px] mb-0.5">Assigned Value</div>
+                  <div className="text-white font-semibold text-base">
                     ${roi.assigned_business_value_usd.toFixed(2)}
                   </div>
                 </div>
-                <div className="border border-[#1c1c1c] p-3 bg-[#030303]">
-                  <div className="text-[#737373] text-[10px] mb-0.5">TOTAL EXECUTION COST</div>
-                  <div className="text-[#00e5ff] font-bold text-base">
+                <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                  <div className="text-zinc-500 text-[11px] mb-0.5">Total Token & Tool Cost</div>
+                  <div className="text-zinc-200 font-semibold text-base font-mono">
                     ${roi.total_cost_usd.toFixed(4)}
                   </div>
                 </div>
-                <div className="border border-[#1c1c1c] p-3 bg-[#030303]">
-                  <div className="text-[#737373] text-[10px] mb-0.5">NET WORKFLOW VALUE</div>
+                <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                  <div className="text-zinc-500 text-[11px] mb-0.5">Net Workflow Value</div>
                   <div
-                    className={`font-bold text-base ${
-                      roi.net_roi_usd >= 0 ? "text-[#00ff66]" : "text-[#ff3333]"
+                    className={`font-semibold text-base font-mono ${
+                      roi.net_roi_usd >= 0 ? "text-emerald-400" : "text-rose-400"
                     }`}
                   >
                     ${roi.net_roi_usd.toFixed(2)}
                   </div>
                 </div>
-                <div className="border border-[#1c1c1c] p-3 bg-[#030303]">
-                  <div className="text-[#737373] text-[10px] mb-0.5">WASTED LOOP BURN</div>
+                <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                  <div className="text-zinc-500 text-[11px] mb-0.5">Wasted Loop Burn</div>
                   <div
-                    className={`font-bold text-base ${
-                      roi.wasted_loop_cost_usd > 0 ? "text-[#ff3333]" : "text-white"
+                    className={`font-semibold text-base font-mono ${
+                      roi.wasted_loop_cost_usd > 0 ? "text-rose-400" : "text-zinc-200"
                     }`}
                   >
                     ${roi.wasted_loop_cost_usd.toFixed(4)}
@@ -109,102 +110,93 @@ export const RoiAndBenchmarks: React.FC<RoiAndBenchmarksProps> = ({
                 </div>
               </div>
 
-              {/* Trajectory Evaluation Scores */}
-              <div className="grid grid-cols-2 gap-2.5 border border-[#1c1c1c] bg-[#030303] p-2.5 text-[10px]">
+              {/* Trajectory Scores */}
+              <div className="grid grid-cols-2 gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-xs">
                 <div className="flex items-center justify-between">
-                  <span className="text-[#888888] flex items-center gap-1">
-                    <Award className="h-3 w-3 text-[#00ff66]" /> TASK SCORE:
+                  <span className="text-zinc-400 flex items-center gap-1.5">
+                    <Award className="h-3.5 w-3.5 text-zinc-500" /> Goal Score:
                   </span>
-                  <span className="text-white font-bold">
+                  <span className="text-white font-medium">
                     {(roi.task_completion_score * 100).toFixed(0)}%
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-[#888888] flex items-center gap-1">
-                    <Award className="h-3 w-3 text-[#00e5ff]" /> TOOL ACCURACY:
+                  <span className="text-zinc-400 flex items-center gap-1.5">
+                    <Award className="h-3.5 w-3.5 text-zinc-500" /> Tool Accuracy:
                   </span>
-                  <span className="text-white font-bold">
+                  <span className="text-white font-medium">
                     {(roi.tool_correctness_score * 100).toFixed(0)}%
                   </span>
                 </div>
               </div>
 
-              {/* Granular Ledger Breakdown */}
-              <div className="border-t border-[#1c1c1c] pt-2.5 text-[11px] space-y-1.5 text-[#888888]">
+              {/* Line items */}
+              <div className="border-t border-zinc-800 pt-3 text-xs space-y-1.5 text-zinc-400 font-mono">
                 <div className="flex justify-between">
-                  <span>LLM INFERENCE TOKENS:</span>
-                  <span className="text-white font-semibold">${roi.llm_cost_usd.toFixed(4)}</span>
+                  <span className="text-zinc-500">LLM Inference:</span>
+                  <span className="text-zinc-300">${roi.llm_cost_usd.toFixed(4)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>MCP / TOOL INVOCATIONS:</span>
-                  <span className="text-white font-semibold">${roi.tool_cost_usd.toFixed(4)}</span>
+                  <span className="text-zinc-500">MCP Tool Calls:</span>
+                  <span className="text-zinc-300">${roi.tool_cost_usd.toFixed(4)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>CONTAINER COMPUTE INFRA:</span>
-                  <span className="text-white font-semibold">${roi.infra_cost_usd.toFixed(4)}</span>
+                  <span className="text-zinc-500">Container Infra:</span>
+                  <span className="text-zinc-300">${roi.infra_cost_usd.toFixed(4)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>HUMAN C2 INTERVENTION OVERHEAD:</span>
-                  <span className="text-white font-semibold">
-                    ${roi.c2_intervention_cost_usd.toFixed(4)}
-                  </span>
+                  <span className="text-zinc-500">C2 Operator Overhead:</span>
+                  <span className="text-zinc-300">${roi.c2_intervention_cost_usd.toFixed(4)}</span>
                 </div>
               </div>
             </div>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-[#666666] p-6">
-              SELECT A SESSION TO COMPUTE FINANCIAL ROI ATTRIBUTION
+            <div className="flex-1 flex items-center justify-center text-xs text-zinc-500 p-6">
+              Select a session to calculate financial attribution and ROI metrics
             </div>
           )}
         </div>
 
-        {/* Right: Hugging Face Open-Weight Pareto Frontier */}
-        <div className="flex flex-col border border-[#222222] bg-[#060606] p-4">
-          <div className="flex items-center justify-between pb-3 mb-3 border-b border-[#1a1a1a]">
-            <span className="flex items-center gap-2 text-white font-bold">
-              <Zap className="h-4 w-4 text-[#00e5ff]" />
-              <span>HUGGING FACE PARETO MODEL SUBSTITUTIONS</span>
+        {/* Right: Hugging Face Pareto Model Frontier */}
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 flex flex-col">
+          <div className="flex items-center justify-between pb-3 mb-3 border-b border-zinc-800">
+            <span className="flex items-center gap-2 text-sm font-medium text-white">
+              <Zap className="h-4 w-4 text-sky-400" />
+              <span>Hugging Face Pareto Frontier</span>
             </span>
-            <span className="border border-[#00e5ff]/40 bg-[#001820] px-2 py-0.5 text-[10px] text-[#00e5ff]">
-              GAIA BENCHMARK
-            </span>
+            <span className="text-xs text-zinc-500">GAIA Benchmark Profiles</span>
           </div>
 
-          <div className="flex-1 flex flex-col space-y-2.5 overflow-y-auto max-h-[290px]">
+          <div className="space-y-2.5 overflow-y-auto max-h-[300px]">
             {recommendations.length > 0 ? (
               recommendations.map((rec, i) => (
                 <div
                   key={i}
-                  className="border border-[#222222] hover:border-[#00e5ff] p-3 bg-[#030303] transition-colors"
+                  className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 hover:border-zinc-700 transition-colors"
                 >
-                  <div className="flex items-center justify-between text-xs font-bold mb-1.5">
+                  <div className="flex items-center justify-between text-xs font-medium mb-1.5">
                     <div className="flex items-center gap-2">
-                      <span className="text-white">{rec.candidate_model}</span>
-                      <span className="border border-[#262626] bg-[#0c0c0c] px-1.5 py-0.5 text-[9px] text-[#a3a3a3] uppercase">
+                      <span className="text-zinc-100 font-semibold">{rec.candidate_model}</span>
+                      <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400 uppercase">
                         {rec.provider}
                       </span>
                     </div>
-                    <span className="text-[#00ff66] flex items-center border border-[#00ff66]/40 bg-[#001808] px-2 py-0.5 text-[10px]">
-                      <ArrowDownRight className="h-3 w-3 mr-0.5" />
-                      -{rec.cost_savings_pct}% SPEND
+                    <span className="rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 text-xs font-semibold flex items-center gap-0.5">
+                      <ArrowDownRight className="h-3.5 w-3.5" />
+                      -{rec.cost_savings_pct}% spend
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-[10px] text-[#888888] mt-2 pt-2 border-t border-[#161616]">
-                    <div>
-                      TTFT LATENCY DELTA:{" "}
-                      <span className="text-[#00e5ff] font-bold">
-                        -{rec.latency_reduction_pct}%
-                      </span>
-                    </div>
-                    <div className="text-right">
-                      GAIA ACCURACY DELTA:{" "}
-                      <span className="text-white font-bold">
+                  <div className="flex items-center justify-between text-xs text-zinc-400 pt-1.5 border-t border-zinc-800/80 font-mono">
+                    <span>Latency: -{rec.latency_reduction_pct}%</span>
+                    <span>
+                      Accuracy:{" "}
+                      <span className="text-zinc-200">
                         {rec.benchmark_accuracy_delta >= 0
                           ? `+${rec.benchmark_accuracy_delta}`
                           : rec.benchmark_accuracy_delta}
                       </span>
-                    </div>
+                    </span>
                   </div>
                 </div>
               ))
@@ -213,10 +205,10 @@ export const RoiAndBenchmarks: React.FC<RoiAndBenchmarksProps> = ({
                 {benchmarks.map((m, i) => (
                   <div
                     key={i}
-                    className="flex justify-between items-center border border-[#1c1c1c] bg-[#030303] p-2.5 text-[11px]"
+                    className="flex justify-between items-center rounded-lg border border-zinc-800 bg-zinc-950 p-2.5 text-xs"
                   >
-                    <span className="text-white font-bold">{m.model_name}</span>
-                    <span className="text-[#a3a3a3]">
+                    <span className="text-zinc-200 font-medium">{m.model_name}</span>
+                    <span className="text-zinc-400 font-mono">
                       GAIA: {(m.gaia_accuracy * 100).toFixed(0)}% • ${m.input_cost_per_1k}/1K
                     </span>
                   </div>

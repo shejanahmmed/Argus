@@ -11,11 +11,11 @@ import {
 import {
   GitBranch,
   ListTree,
-  AlertOctagon,
+  AlertCircle,
   Clock,
-  Coins,
+  DollarSign,
   Cpu,
-  Shield,
+  ShieldCheck,
   Code2,
 } from "lucide-react";
 import { ArgusSpan } from "../types";
@@ -41,8 +41,8 @@ export const LangGraphVisualizer: React.FC<LangGraphVisualizerProps> = ({
 
     const calculatedNodes: Node[] = [];
     const calculatedEdges: Edge[] = [];
-    const xSpacing = 250;
-    const ySpacing = 125;
+    const xSpacing = 240;
+    const ySpacing = 120;
 
     const nameCount: Record<string, number> = {};
     spans.forEach((s) => {
@@ -57,7 +57,7 @@ export const LangGraphVisualizer: React.FC<LangGraphVisualizerProps> = ({
     spans.forEach((span, index) => {
       const toolName = span.attributes?.tool_name as string | undefined;
       const rawKey = toolName || span.name;
-      const displayLabel = toolName ? `TOOL // ${toolName}` : span.name;
+      const displayLabel = toolName ? `Tool: ${toolName}` : span.name;
       const isLoop = (nameCount[rawKey] || 0) >= 3;
       const isSelected = selectedSpan?.span_id === span.span_id;
 
@@ -69,38 +69,16 @@ export const LangGraphVisualizer: React.FC<LangGraphVisualizerProps> = ({
 
       const col = index % 3;
       const row = Math.floor(index / 3);
-      const posX = 36 + col * xSpacing;
-      const posY = 36 + row * ySpacing;
+      const posX = 40 + col * xSpacing;
+      const posY = 35 + row * ySpacing;
 
-      let borderColor = "#2e2e2e";
-      let accentColor = "#e5e5e5";
-      let badgeBg = "#141414";
-      let cardBg = "#070707";
-
-      if (isLoop) {
-        borderColor = "#ff3333";
-        accentColor = "#ff5555";
-        badgeBg = "#2b0404";
-        cardBg = "#160303";
-      } else if (span.span_kind === "TOOL") {
-        borderColor = "#00e5ff";
-        accentColor = "#00e5ff";
-        badgeBg = "#002229";
-        cardBg = "#031014";
+      let kindColor = "bg-zinc-800 text-zinc-300 border-zinc-700";
+      if (span.span_kind === "TOOL") {
+        kindColor = "bg-sky-500/10 text-sky-400 border-sky-500/20";
       } else if (span.span_kind === "LLM") {
-        borderColor = "#00ff66";
-        accentColor = "#00ff66";
-        badgeBg = "#00240e";
-        cardBg = "#031208";
+        kindColor = "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
       } else if (span.span_kind === "AGENT") {
-        borderColor = "#ffb000";
-        accentColor = "#ffb000";
-        badgeBg = "#261900";
-        cardBg = "#120c02";
-      }
-
-      if (isSelected) {
-        borderColor = "#ffffff";
+        kindColor = "bg-purple-500/10 text-purple-400 border-purple-500/20";
       }
 
       calculatedNodes.push({
@@ -110,51 +88,43 @@ export const LangGraphVisualizer: React.FC<LangGraphVisualizerProps> = ({
           label: (
             <div
               onClick={() => onSelectSpan(span)}
-              style={{
-                background: cardBg,
-                border: `1px solid ${borderColor}`,
-                boxShadow: isSelected
-                  ? "0 0 0 1px #ffffff, 0 8px 24px rgba(0,255,102,0.18)"
+              className={`rounded-lg border p-3 font-sans text-left cursor-pointer transition-all ${
+                isSelected
+                  ? "border-zinc-300 bg-zinc-800 shadow-lg ring-1 ring-zinc-400"
                   : isLoop
-                  ? "0 0 14px rgba(255,51,51,0.3)"
-                  : "0 4px 14px rgba(0,0,0,0.8)",
-                width: 210,
-              }}
-              className="p-3 font-mono text-left cursor-pointer transition-all"
+                  ? "border-rose-500/40 bg-zinc-900/90 hover:border-rose-400"
+                  : "border-zinc-800 bg-zinc-900/80 hover:border-zinc-700 hover:bg-zinc-900"
+              }`}
+              style={{ width: 200 }}
             >
-              <div className="flex items-center justify-between gap-1.5 mb-1.5">
+              <div className="flex items-center justify-between gap-1 mb-1.5">
                 <span
-                  style={{ background: badgeBg, color: accentColor, borderColor }}
-                  className="px-1.5 py-0.5 text-[9px] font-bold border uppercase tracking-wider"
+                  className={`px-1.5 py-0.5 text-[10px] font-medium rounded border ${kindColor}`}
                 >
                   #{index + 1} • {span.span_kind}
                 </span>
                 {isLoop ? (
-                  <span className="px-1.5 py-0.5 text-[9px] bg-[#ff3333] text-black font-extrabold tracking-wider">
-                    LOOP TRIP
+                  <span className="px-1.5 py-0.5 text-[10px] bg-rose-500/10 text-rose-400 font-medium rounded border border-rose-500/20">
+                    Loop
                   </span>
                 ) : (
-                  <span className="text-[10px] text-[#737373]">
+                  <span className="text-[11px] text-zinc-400 font-mono">
                     {span.latency_ms.toFixed(0)}ms
                   </span>
                 )}
               </div>
 
-              <div
-                style={{ color: accentColor }}
-                className="text-xs font-bold truncate mb-1.5"
-                title={displayLabel}
-              >
+              <div className="text-xs font-semibold text-zinc-100 truncate mb-1" title={displayLabel}>
                 {displayLabel}
               </div>
 
-              <div className="flex items-center justify-between text-[10px] text-[#888888] pt-1.5 border-t border-[#1f1f1f]">
+              <div className="flex items-center justify-between text-[11px] text-zinc-400 pt-1 border-t border-zinc-800/60 font-mono">
                 <span>
                   {span.prompt_tokens + span.completion_tokens > 0
                     ? `${span.prompt_tokens + span.completion_tokens} tok`
                     : span.operation_name}
                 </span>
-                <span className="text-white font-semibold">
+                <span className="text-zinc-200 font-medium">
                   ${span.cost_usd.toFixed(4)}
                 </span>
               </div>
@@ -170,39 +140,35 @@ export const LangGraphVisualizer: React.FC<LangGraphVisualizerProps> = ({
           source: prevSpan.span_id,
           target: span.span_id,
           animated: true,
-          label: isLoop ? "REPEAT" : undefined,
-          labelStyle: { fill: "#ff5555", fontWeight: 700, fontSize: 9 },
-          labelBgStyle: { fill: "#1a0000", fillOpacity: 0.9 },
           style: {
-            stroke: isLoop ? "#ff3333" : "#00ff66",
-            strokeWidth: isLoop ? 2.2 : 1.5,
+            stroke: isLoop ? "#f43f5e" : "#52525b",
+            strokeWidth: isLoop ? 1.8 : 1.4,
           },
           markerEnd: {
             type: MarkerType.ArrowClosed,
-            color: isLoop ? "#ff3333" : "#00ff66",
+            color: isLoop ? "#f43f5e" : "#71717a",
           },
         });
       }
     });
 
-    // Add cyclic feedback edge if loop detected across multiple spans
     if (firstLoopSpanId && lastLoopSpanId && firstLoopSpanId !== lastLoopSpanId) {
       calculatedEdges.push({
         id: `cycle-${lastLoopSpanId}-${firstLoopSpanId}`,
         source: lastLoopSpanId,
         target: firstLoopSpanId,
         animated: true,
-        label: "3-TIER CIRCUIT BREAKER TRIP",
-        labelStyle: { fill: "#ff3333", fontWeight: 800, fontSize: 9 },
-        labelBgStyle: { fill: "#000000", fillOpacity: 0.95 },
+        label: "Loop Cycle",
+        labelStyle: { fill: "#f43f5e", fontWeight: 600, fontSize: 10 },
+        labelBgStyle: { fill: "#18181b", fillOpacity: 0.9 },
         style: {
-          stroke: "#ff3333",
-          strokeWidth: 2,
-          strokeDasharray: "5 5",
+          stroke: "#f43f5e",
+          strokeWidth: 1.8,
+          strokeDasharray: "4 4",
         },
         markerEnd: {
           type: MarkerType.ArrowClosed,
-          color: "#ff3333",
+          color: "#f43f5e",
         },
       });
     }
@@ -225,122 +191,119 @@ export const LangGraphVisualizer: React.FC<LangGraphVisualizerProps> = ({
   );
 
   return (
-    <div className="terminal-card flex flex-col">
-      {/* Header with Mode Switcher */}
-      <div className="dot-matrix-header flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-xs">
-        <div className="flex items-center gap-2.5">
-          <GitBranch className="h-4 w-4 text-[#00ff66]" />
-          <span className="text-[#00ff66]">
-            [ 02 // LANGGRAPH TOPOLOGY & DOTTED-ORDER TRACE WATERFALL ]
-          </span>
+    <div className="rounded-xl border border-zinc-800 bg-[#121215] flex flex-col shadow-sm">
+      {/* Visualizer Header */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+        <div className="flex items-center gap-3">
+          <GitBranch className="h-4 w-4 text-zinc-400" />
+          <h2 className="text-sm font-semibold text-zinc-100">Execution Topology</h2>
           {loopDetectedCount >= 3 && (
-            <span className="inline-flex items-center gap-1 border border-[#ff3333] bg-[#240303] px-2 py-0.5 text-[10px] font-bold text-[#ff3333] pulse-red">
-              <AlertOctagon className="h-3 w-3" />
-              RECURSIVE CYCLE DETECTED ({loopDetectedCount}x)
+            <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-400 border border-rose-500/20">
+              <AlertCircle className="h-3 w-3" />
+              Loop Detected ({loopDetectedCount} steps)
             </span>
           )}
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-[11px] text-[#737373] mr-1">
-            {spans.length} SPANS
-          </span>
-          <button
-            onClick={() => setDisplayMode("DAG")}
-            className={`flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold border cursor-pointer transition-colors ${
-              displayMode === "DAG"
-                ? "border-[#00ff66] bg-[#00ff66] text-black"
-                : "border-[#262626] bg-[#0a0a0a] text-[#888888] hover:text-white"
-            }`}
-          >
-            <GitBranch className="h-3 w-3" />
-            <span>CYCLIC DAG</span>
-          </button>
-          <button
-            onClick={() => setDisplayMode("WATERFALL")}
-            className={`flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold border cursor-pointer transition-colors ${
-              displayMode === "WATERFALL"
-                ? "border-[#00ff66] bg-[#00ff66] text-black"
-                : "border-[#262626] bg-[#0a0a0a] text-[#888888] hover:text-white"
-            }`}
-          >
-            <ListTree className="h-3 w-3" />
-            <span>TRACE WATERFALL</span>
-          </button>
+          <span className="text-xs text-zinc-500 mr-1">{spans.length} spans</span>
+          <div className="flex items-center rounded-lg bg-zinc-900 p-1 border border-zinc-800">
+            <button
+              onClick={() => setDisplayMode("DAG")}
+              className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer ${
+                displayMode === "DAG"
+                  ? "bg-zinc-800 text-white shadow-sm"
+                  : "text-zinc-400 hover:text-zinc-200"
+              }`}
+            >
+              <GitBranch className="h-3.5 w-3.5" />
+              <span>Canvas</span>
+            </button>
+            <button
+              onClick={() => setDisplayMode("WATERFALL")}
+              className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer ${
+                displayMode === "WATERFALL"
+                  ? "bg-zinc-800 text-white shadow-sm"
+                  : "text-zinc-400 hover:text-zinc-200"
+              }`}
+            >
+              <ListTree className="h-3.5 w-3.5" />
+              <span>Waterfall</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Main Visualization Viewport */}
+      {/* Main Canvas Viewport */}
       {spans.length === 0 ? (
-        <div className="flex h-[320px] items-center justify-center text-xs text-[#666666] font-mono bg-[#030303]">
-          SELECT AN AGENT SESSION OR CLICK [SEED DEMO SCENARIO] TO RENDER EXECUTION TOPOLOGY
+        <div className="flex h-[320px] items-center justify-center text-xs text-zinc-500">
+          Select an agent session to inspect execution graph and telemetry traces
         </div>
       ) : displayMode === "DAG" ? (
-        <div className="relative h-[340px] w-full bg-[#020202]">
+        <div className="relative h-[340px] w-full bg-[#0c0c0e]">
           <div className="absolute inset-0">
             <ReactFlow
               key={flowKey}
               nodes={nodes}
               edges={edges}
               fitView
-              fitViewOptions={{ padding: 0.22 }}
+              fitViewOptions={{ padding: 0.2 }}
               minZoom={0.4}
-              maxZoom={1.6}
-              attributionPosition="bottom-right"
+              maxZoom={1.5}
             >
               <Background
                 variant={BackgroundVariant.Dots}
-                gap={20}
-                size={1.2}
-                color="rgba(255, 255, 255, 0.12)"
+                gap={18}
+                size={1}
+                color="rgba(255, 255, 255, 0.08)"
               />
               <Controls />
             </ReactFlow>
           </div>
         </div>
       ) : (
-        <div className="h-[340px] overflow-y-auto p-3.5 space-y-2 bg-[#030303] font-mono">
+        <div className="h-[340px] overflow-y-auto p-4 space-y-2 bg-[#0c0c0e]">
           {spans.map((span, idx) => {
             const isSelected = selectedSpan?.span_id === span.span_id;
             const depth = Math.max(0, (span.dotted_order.match(/\./g) || []).length);
-            const widthPct = Math.max(6, (span.latency_ms / maxLatency) * 100);
+            const widthPct = Math.max(5, (span.latency_ms / maxLatency) * 100);
             const toolName = span.attributes?.tool_name as string | undefined;
 
             return (
               <div
                 key={span.span_id}
                 onClick={() => onSelectSpan(span)}
-                style={{ marginLeft: `${Math.min(depth * 18, 72)}px` }}
-                className={`border p-2.5 cursor-pointer transition-all ${
+                style={{ marginLeft: `${Math.min(depth * 16, 64)}px` }}
+                className={`rounded-lg border p-3 cursor-pointer transition-all ${
                   isSelected
-                    ? "border-white bg-[#121212]"
-                    : "border-[#1f1f1f] bg-[#070707] hover:border-[#383838]"
+                    ? "border-zinc-500 bg-zinc-800/80"
+                    : "border-zinc-800/80 bg-zinc-900/40 hover:border-zinc-700"
                 }`}
               >
                 <div className="flex items-center justify-between gap-2 text-xs mb-1.5">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-[#666666]">#{idx + 1}</span>
-                    <span className="border border-[#2e2e2e] bg-[#111111] px-1.5 py-0.5 text-[10px] font-bold text-[#00ff66]">
+                    <span className="text-[11px] text-zinc-500">#{idx + 1}</span>
+                    <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-300">
                       {span.span_kind}
                     </span>
-                    <span className="font-bold text-white">
+                    <span className="font-medium text-zinc-100">
                       {toolName ? `${span.name} (${toolName})` : span.name}
                     </span>
                     {span.redacted && (
-                      <span className="inline-flex items-center gap-1 border border-[#ffb000] bg-[#1f1300] px-1.5 py-0.5 text-[9px] text-[#ffb000]">
-                        <Shield className="h-2.5 w-2.5" />
-                        PII REDACTED
+                      <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-400 border border-amber-500/20">
+                        <ShieldCheck className="h-3 w-3" />
+                        PII Redacted
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-3 text-[11px]">
-                    <span className="text-[#a3a3a3]">{span.latency_ms.toFixed(1)} ms</span>
-                    <span className="text-[#00ff66] font-bold">${span.cost_usd.toFixed(5)}</span>
+                  <div className="flex items-center gap-3 text-xs text-zinc-400 font-mono">
+                    <span>{span.latency_ms.toFixed(1)}ms</span>
+                    <span className="text-zinc-200">${span.cost_usd.toFixed(4)}</span>
                   </div>
                 </div>
-                <div className="h-1.5 w-full bg-[#141414] overflow-hidden">
+                <div className="h-1.5 w-full rounded-full bg-zinc-800 overflow-hidden">
                   <div
-                    className="h-full bg-[#00e5ff]"
+                    className="h-full rounded-full bg-sky-500"
                     style={{ width: `${widthPct}%` }}
                   />
                 </div>
@@ -350,113 +313,111 @@ export const LangGraphVisualizer: React.FC<LangGraphVisualizerProps> = ({
         </div>
       )}
 
-      {/* Selected Span & OpenInference Inspector */}
+      {/* Selected Span Inspector Drawer */}
       {selectedSpan && (
-        <div className="border-t border-[#262626] bg-[#060606] p-4 font-mono text-xs">
-          <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-[#1a1a1a]">
+        <div className="border-t border-zinc-800 bg-[#0e0e11] p-4 text-xs">
+          <div className="flex items-center justify-between pb-3 mb-3 border-b border-zinc-800">
             <div className="flex items-center gap-2.5">
-              <Code2 className="h-4 w-4 text-[#00e5ff]" />
-              <span className="font-bold text-white text-sm">
-                SPAN TELEMETRY // {selectedSpan.name}
+              <Code2 className="h-4 w-4 text-zinc-400" />
+              <span className="font-semibold text-white">
+                Span: {selectedSpan.name}
               </span>
-              <span className="border border-[#2e2e2e] bg-[#111111] px-2 py-0.5 text-[10px] text-[#00e5ff]">
+              <span className="rounded bg-zinc-800 px-2 py-0.5 text-[11px] font-medium text-zinc-400 border border-zinc-700">
                 {selectedSpan.span_kind} • {selectedSpan.operation_name}
               </span>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center rounded-lg bg-zinc-900 p-0.5 border border-zinc-800">
               <button
                 onClick={() => setInspectorTab("PAYLOADS")}
-                className={`px-2.5 py-1 text-[10px] font-bold border cursor-pointer ${
+                className={`rounded px-2.5 py-1 text-xs font-medium cursor-pointer ${
                   inspectorTab === "PAYLOADS"
-                    ? "border-[#00e5ff] bg-[#00e5ff] text-black"
-                    : "border-[#262626] text-[#888888] hover:text-white"
+                    ? "bg-zinc-800 text-white"
+                    : "text-zinc-400 hover:text-zinc-200"
                 }`}
               >
-                INPUT / OUTPUT PAYLOADS
+                Payloads
               </button>
               <button
                 onClick={() => setInspectorTab("ATTRIBUTES")}
-                className={`px-2.5 py-1 text-[10px] font-bold border cursor-pointer ${
+                className={`rounded px-2.5 py-1 text-xs font-medium cursor-pointer ${
                   inspectorTab === "ATTRIBUTES"
-                    ? "border-[#00e5ff] bg-[#00e5ff] text-black"
-                    : "border-[#262626] text-[#888888] hover:text-white"
+                    ? "bg-zinc-800 text-white"
+                    : "text-zinc-400 hover:text-zinc-200"
                 }`}
               >
-                OTEL & DOTTED_ORDER METADATA
+                Attributes & OTel
               </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-3 text-[11px]">
-            <div className="border border-[#1c1c1c] bg-[#0a0a0a] p-2.5">
-              <div className="text-[#737373] flex items-center gap-1 mb-0.5">
-                <Coins className="h-3 w-3 text-[#00ff66]" /> SPAN COST
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-2.5">
+              <div className="text-zinc-400 flex items-center gap-1 text-[11px] mb-0.5">
+                <DollarSign className="h-3 w-3 text-emerald-400" /> Cost
               </div>
-              <div className="text-[#00ff66] font-bold text-sm">
+              <div className="text-zinc-100 font-mono font-medium">
                 ${selectedSpan.cost_usd.toFixed(5)}
               </div>
             </div>
-            <div className="border border-[#1c1c1c] bg-[#0a0a0a] p-2.5">
-              <div className="text-[#737373] flex items-center gap-1 mb-0.5">
-                <Clock className="h-3 w-3 text-[#00e5ff]" /> LATENCY
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-2.5">
+              <div className="text-zinc-400 flex items-center gap-1 text-[11px] mb-0.5">
+                <Clock className="h-3 w-3 text-sky-400" /> Duration
               </div>
-              <div className="text-white font-bold text-sm">
+              <div className="text-zinc-100 font-mono font-medium">
                 {selectedSpan.latency_ms.toFixed(1)} ms
               </div>
             </div>
-            <div className="border border-[#1c1c1c] bg-[#0a0a0a] p-2.5">
-              <div className="text-[#737373] flex items-center gap-1 mb-0.5">
-                <Cpu className="h-3 w-3 text-[#ffb000]" /> PROMPT TOKENS
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-2.5">
+              <div className="text-zinc-400 flex items-center gap-1 text-[11px] mb-0.5">
+                <Cpu className="h-3 w-3 text-amber-400" /> Prompt Tokens
               </div>
-              <div className="text-white font-bold text-sm">
+              <div className="text-zinc-100 font-mono font-medium">
                 {selectedSpan.prompt_tokens}
               </div>
             </div>
-            <div className="border border-[#1c1c1c] bg-[#0a0a0a] p-2.5">
-              <div className="text-[#737373] flex items-center gap-1 mb-0.5">
-                <Cpu className="h-3 w-3 text-[#00ff66]" /> COMPLETION TOKENS
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-2.5">
+              <div className="text-zinc-400 flex items-center gap-1 text-[11px] mb-0.5">
+                <Cpu className="h-3 w-3 text-purple-400" /> Output Tokens
               </div>
-              <div className="text-white font-bold text-sm">
+              <div className="text-zinc-100 font-mono font-medium">
                 {selectedSpan.completion_tokens}
               </div>
             </div>
           </div>
 
           {inspectorTab === "PAYLOADS" ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
-              <div className="border border-[#1f1f1f] bg-[#030303] p-2.5">
-                <div className="text-[10px] font-bold text-[#737373] mb-1">
-                  INPUT PAYLOAD (PII SCRUBBED AT EDGE):
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                <div className="text-[11px] font-medium text-zinc-400 mb-1.5">
+                  Input Payload (Edge Sanitized)
                 </div>
-                <pre className="text-[#d4d4d4] overflow-x-auto max-h-24">
+                <pre className="text-zinc-300 font-mono text-[11px] overflow-x-auto max-h-24">
                   {JSON.stringify(selectedSpan.input_payload, null, 2)}
                 </pre>
               </div>
-              <div className="border border-[#1f1f1f] bg-[#030303] p-2.5">
-                <div className="text-[10px] font-bold text-[#737373] mb-1">
-                  OUTPUT PAYLOAD / THOUGHT TRACE:
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                <div className="text-[11px] font-medium text-zinc-400 mb-1.5">
+                  Output Payload
                 </div>
-                <pre className="text-[#00ff66] overflow-x-auto max-h-24">
+                <pre className="text-zinc-300 font-mono text-[11px] overflow-x-auto max-h-24">
                   {JSON.stringify(selectedSpan.output_payload, null, 2)}
                 </pre>
               </div>
             </div>
           ) : (
-            <div className="border border-[#1f1f1f] bg-[#030303] p-2.5 text-[11px] space-y-1.5">
-              <div className="flex justify-between border-b border-[#171717] pb-1">
-                <span className="text-[#737373]">SPAN_ID (UUIDv7):</span>
-                <span className="text-white">{selectedSpan.span_id}</span>
-              </div>
-              <div className="flex justify-between border-b border-[#171717] pb-1">
-                <span className="text-[#737373]">DOTTED_ORDER HIERARCHY:</span>
-                <span className="text-[#00e5ff] truncate max-w-[360px]" title={selectedSpan.dotted_order}>
-                  {selectedSpan.dotted_order}
-                </span>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-xs space-y-1.5 font-mono">
+              <div className="flex justify-between">
+                <span className="text-zinc-500">Span ID (UUIDv7):</span>
+                <span className="text-zinc-300">{selectedSpan.span_id}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#737373]">ATTRIBUTES:</span>
-                <span className="text-[#a3a3a3]">
+                <span className="text-zinc-500">Dotted Order Hierarchy:</span>
+                <span className="text-sky-400 truncate max-w-[400px]">{selectedSpan.dotted_order}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-500">Attributes:</span>
+                <span className="text-zinc-300 truncate max-w-[400px]">
                   {JSON.stringify(selectedSpan.attributes)}
                 </span>
               </div>

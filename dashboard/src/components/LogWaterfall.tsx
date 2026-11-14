@@ -21,7 +21,7 @@ function parseRawLogMessage(raw: string, fallbackSeverity: string): ParsedLogCon
       };
     }
   } catch {
-    // Plaintext container stdout line
+    // Plaintext line
   }
   return { cleanMessage: raw, level: (fallbackSeverity || "INFO").toUpperCase() };
 }
@@ -42,51 +42,53 @@ export const LogWaterfall: React.FC<LogWaterfallProps> = ({ logs }) => {
   }, [logs, filter]);
 
   return (
-    <div className="terminal-card flex flex-col font-mono text-xs">
-      <div className="dot-matrix-header flex flex-wrap items-center justify-between gap-2 px-4 py-3">
-        <span className="text-[#00ff66] flex items-center gap-2">
-          <Terminal className="h-4 w-4" />
-          <span>[ 05 // CORRELATED CONTAINER & CLOUDWATCH LOG STREAM ]</span>
-        </span>
+    <div className="rounded-xl border border-zinc-800 bg-[#121215] flex flex-col shadow-sm">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+        <div className="flex items-center gap-2.5">
+          <Terminal className="h-4 w-4 text-zinc-400" />
+          <h2 className="text-sm font-semibold text-zinc-100">Container Log Stream</h2>
+        </div>
 
-        <div className="flex items-center gap-1.5 text-[10px]">
+        <div className="flex items-center rounded-lg bg-zinc-900 p-0.5 border border-zinc-800 text-xs">
           <button
             onClick={() => setFilter("ALL")}
-            className={`px-2 py-0.5 border font-bold cursor-pointer ${
+            className={`rounded px-2.5 py-1 font-medium cursor-pointer transition-colors ${
               filter === "ALL"
-                ? "border-[#00ff66] bg-[#00ff66] text-black"
-                : "border-[#262626] bg-[#0a0a0a] text-[#888888] hover:text-white"
+                ? "bg-zinc-800 text-white"
+                : "text-zinc-400 hover:text-zinc-200"
             }`}
           >
-            ALL ({logs.length})
+            All ({logs.length})
           </button>
           <button
             onClick={() => setFilter("ANOMALIES")}
-            className={`px-2 py-0.5 border font-bold cursor-pointer ${
+            className={`rounded px-2.5 py-1 font-medium cursor-pointer transition-colors ${
               filter === "ANOMALIES"
-                ? "border-[#ff3333] bg-[#ff3333] text-black"
-                : "border-[#262626] bg-[#0a0a0a] text-[#888888] hover:text-white"
+                ? "bg-zinc-800 text-white"
+                : "text-zinc-400 hover:text-zinc-200"
             }`}
           >
-            OOM / ERRORS
+            Errors & OOM
           </button>
           <button
             onClick={() => setFilter("CORRELATED")}
-            className={`px-2 py-0.5 border font-bold cursor-pointer ${
+            className={`rounded px-2.5 py-1 font-medium cursor-pointer transition-colors ${
               filter === "CORRELATED"
-                ? "border-[#00e5ff] bg-[#00e5ff] text-black"
-                : "border-[#262626] bg-[#0a0a0a] text-[#888888] hover:text-white"
+                ? "bg-zinc-800 text-white"
+                : "text-zinc-400 hover:text-zinc-200"
             }`}
           >
-            TRACE LINKED
+            Trace Linked
           </button>
         </div>
       </div>
 
-      <div className="p-3.5 space-y-2.5 max-h-[300px] overflow-y-auto bg-[#030303]">
+      {/* Log List */}
+      <div className="p-4 space-y-2 max-h-[300px] overflow-y-auto font-mono text-xs">
         {filteredLogs.length === 0 ? (
-          <div className="border border-dashed border-[#222222] bg-[#060606] p-6 text-center text-[#666666]">
-            NO CONTAINER LOG EVENTS MATCHING FILTER
+          <div className="rounded-lg border border-dashed border-zinc-800 bg-zinc-950/40 p-6 text-center text-zinc-500 font-sans">
+            No container log entries matching current filter
           </div>
         ) : (
           filteredLogs.map((log) => {
@@ -97,44 +99,46 @@ export const LogWaterfall: React.FC<LogWaterfallProps> = ({ logs }) => {
             return (
               <div
                 key={log.log_id}
-                className={`border p-3 text-[11px] transition-colors ${
+                className={`rounded-lg border p-3 transition-colors ${
                   isError
-                    ? "border-[#ff3333]/80 bg-[#1a0303] text-[#ff8888]"
+                    ? "border-rose-500/30 bg-rose-500/5 text-rose-300"
                     : isWarn
-                    ? "border-[#ffb000]/70 bg-[#191000] text-[#ffd479]"
-                    : "border-[#1f1f1f] bg-[#070707] text-[#d4d4d4]"
+                    ? "border-amber-500/30 bg-amber-500/5 text-amber-300"
+                    : "border-zinc-800/80 bg-zinc-950 text-zinc-300"
                 }`}
               >
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
                   <div className="flex items-center gap-2">
                     <span
-                      className={`px-1.5 py-0.5 text-[9px] font-extrabold border ${
+                      className={`rounded px-1.5 py-0.5 text-[10px] font-semibold border uppercase ${
                         isError
-                          ? "border-[#ff3333] bg-[#ff3333] text-black"
+                          ? "border-rose-500/30 bg-rose-500/10 text-rose-400"
                           : isWarn
-                          ? "border-[#ffb000] bg-[#ffb000] text-black"
-                          : "border-[#00ff66]/50 bg-[#001808] text-[#00ff66]"
+                          ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
+                          : "border-zinc-700 bg-zinc-800 text-zinc-300"
                       }`}
                     >
-                      {log.is_container_anomaly ? "OOM / ANOMALY" : level}
+                      {log.is_container_anomaly ? "OOM Crash" : level}
                     </span>
-                    <span className="font-bold text-white">{log.log_stream}</span>
-                    <span className="text-[10px] text-[#737373]">
+                    <span className="text-zinc-400 font-sans font-medium text-xs">
+                      {log.log_stream}
+                    </span>
+                    <span className="text-[11px] text-zinc-500">
                       {new Date(log.timestamp).toLocaleTimeString()}
                     </span>
                   </div>
 
                   {log.trace_id && (
-                    <span className="inline-flex items-center gap-1 border border-[#00e5ff]/50 bg-[#001820] px-2 py-0.5 text-[10px] font-bold text-[#00e5ff]">
+                    <span className="inline-flex items-center gap-1 rounded bg-zinc-900 border border-zinc-800 px-2 py-0.5 text-[11px] text-sky-400">
                       <Link2 className="h-3 w-3" />
-                      TRACE: {log.trace_id.substring(0, 10)}
+                      Trace: {log.trace_id.substring(0, 8)}
                     </span>
                   )}
                 </div>
 
-                <div className="flex items-start gap-2 leading-relaxed">
+                <div className="flex items-start gap-2 pt-0.5 leading-relaxed font-sans text-xs">
                   {isError && (
-                    <AlertTriangle className="h-4 w-4 text-[#ff3333] shrink-0 mt-0.5" />
+                    <AlertTriangle className="h-3.5 w-3.5 text-rose-400 shrink-0 mt-0.5" />
                   )}
                   <span className="break-words">{cleanMessage}</span>
                 </div>

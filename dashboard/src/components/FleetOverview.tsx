@@ -1,5 +1,5 @@
 import React from "react";
-import { Play, Pause, XOctagon, Cpu, Sparkles, CheckCircle2 } from "lucide-react";
+import { Play, Pause, XOctagon, Bot, Plus } from "lucide-react";
 import { AgentSession, SessionStatus } from "../types";
 
 interface FleetOverviewProps {
@@ -12,45 +12,39 @@ interface FleetOverviewProps {
   onSeedScenario?: () => void;
 }
 
-const statusStyles: Record<
+const statusConfig: Record<
   SessionStatus,
-  { badge: string; dot: string; bar: string; label: string }
+  { pill: string; label: string; bar: string }
 > = {
   RUNNING: {
-    badge: "border-[#00ff66] text-[#00ff66] bg-[#001808]",
-    dot: "bg-[#00ff66] pulse-green",
-    bar: "bg-[#00ff66]",
-    label: "RUNNING",
+    pill: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+    label: "Running",
+    bar: "bg-emerald-500",
   },
   PAUSED_C2: {
-    badge: "border-[#ffb000] text-[#ffb000] bg-[#1f1300]",
-    dot: "bg-[#ffb000]",
-    bar: "bg-[#ffb000]",
-    label: "PAUSED // C2 GATE",
+    pill: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+    label: "Paused for C2",
+    bar: "bg-amber-400",
   },
   TRIPPED_LOOP: {
-    badge: "border-[#ff3333] text-[#ff3333] bg-[#240303] pulse-red",
-    dot: "bg-[#ff3333]",
-    bar: "bg-[#ff3333]",
-    label: "TRIPPED // LOOP",
+    pill: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+    label: "Loop Tripped",
+    bar: "bg-rose-500",
   },
   TRIPPED_BUDGET: {
-    badge: "border-[#ff3333] text-[#ff3333] bg-[#240303] pulse-red",
-    dot: "bg-[#ff3333]",
-    bar: "bg-[#ff3333]",
-    label: "TRIPPED // BUDGET",
+    pill: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+    label: "Budget Exceeded",
+    bar: "bg-rose-500",
   },
   COMPLETED: {
-    badge: "border-[#00e5ff] text-[#00e5ff] bg-[#001a22]",
-    dot: "bg-[#00e5ff]",
-    bar: "bg-[#00e5ff]",
-    label: "COMPLETED",
+    pill: "bg-sky-500/10 text-sky-400 border-sky-500/20",
+    label: "Completed",
+    bar: "bg-sky-500",
   },
   TERMINATED: {
-    badge: "border-[#525252] text-[#888888] bg-[#121212]",
-    dot: "bg-[#666666]",
-    bar: "bg-[#525252]",
-    label: "TERMINATED",
+    pill: "bg-zinc-800 text-zinc-400 border-zinc-700",
+    label: "Terminated",
+    bar: "bg-zinc-600",
   },
 };
 
@@ -64,40 +58,41 @@ export const FleetOverview: React.FC<FleetOverviewProps> = ({
   onSeedScenario,
 }) => {
   return (
-    <div className="terminal-card flex flex-col">
-      <div className="dot-matrix-header flex items-center justify-between px-4 py-3 text-xs">
-        <div className="flex items-center gap-2">
-          <Cpu className="h-4 w-4 text-[#00ff66]" />
-          <span className="text-[#00ff66]">[ 01 // AGENT FLEET STATE MATRIX ]</span>
+    <div className="rounded-xl border border-zinc-800 bg-[#121215] flex flex-col shadow-sm">
+      {/* Card Header */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+        <div className="flex items-center gap-2.5">
+          <Bot className="h-4 w-4 text-zinc-400" />
+          <h2 className="text-sm font-semibold text-zinc-100">Agent Fleet</h2>
+          <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs font-medium text-zinc-400 border border-zinc-700/60">
+            {sessions.length}
+          </span>
         </div>
-        <span className="border border-[#262626] bg-[#0a0a0a] px-2 py-0.5 text-[10px] text-[#a3a3a3]">
-          UNITS TRACKED: {sessions.length}
-        </span>
+        <span className="text-xs text-zinc-500">Autonomous Runtimes</span>
       </div>
 
-      <div className="p-3.5 space-y-3 max-h-[430px] overflow-y-auto">
+      {/* Fleet Items */}
+      <div className="p-4 space-y-2.5 max-h-[460px] overflow-y-auto">
         {sessions.length === 0 ? (
-          <div className="border border-dashed border-[#262626] bg-[#060606] p-8 text-center">
-            <div className="text-xs font-bold text-[#a3a3a3] mb-2">
-              NO AUTONOMOUS AGENT UNITS ACTIVE IN WORKSPACE
-            </div>
-            <div className="text-[11px] text-[#666666] mb-4">
-              Initialize the multi-agent telemetry scenario to inspect LangGraph loops, CrewAI MCP gates, and AutoGPT FinOps traces.
-            </div>
+          <div className="rounded-lg border border-dashed border-zinc-800 bg-zinc-900/40 p-8 text-center">
+            <p className="text-sm font-medium text-zinc-300 mb-1">No active agent sessions</p>
+            <p className="text-xs text-zinc-500 mb-4">
+              Seed a multi-agent scenario to monitor loops, MCP tool calls, and FinOps metrics.
+            </p>
             {onSeedScenario && (
               <button
                 onClick={onSeedScenario}
-                className="inline-flex items-center gap-2 border border-[#00ff66] bg-[#001a09] px-4 py-2 text-xs font-bold text-[#00ff66] hover:bg-[#00ff66] hover:text-black transition-all cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer"
               >
-                <Sparkles className="h-3.5 w-3.5" />
-                <span>INITIALIZE MULTI-AGENT DEMO FLEET</span>
+                <Plus className="h-3.5 w-3.5" />
+                <span>Initialize Scenario</span>
               </button>
             )}
           </div>
         ) : (
           sessions.map((sess) => {
             const isSelected = sess.session_id === selectedSessionId;
-            const st = statusStyles[sess.status] || statusStyles.RUNNING;
+            const status = statusConfig[sess.status] || statusConfig.RUNNING;
             const burnPct = Math.min(
               100,
               Math.max(2, (sess.accumulated_cost_usd / Math.max(0.01, sess.budget_cap_usd)) * 100)
@@ -107,96 +102,78 @@ export const FleetOverview: React.FC<FleetOverviewProps> = ({
               <div
                 key={sess.session_id}
                 onClick={() => onSelectSession(sess.session_id)}
-                className={`border p-3.5 transition-all cursor-pointer ${
+                className={`rounded-lg border p-3.5 transition-all cursor-pointer ${
                   isSelected
-                    ? "border-[#00ff66] bg-[#0b120d] shadow-[inset_3px_0_0_#00ff66]"
-                    : "border-[#1f1f1f] bg-[#060606] hover:border-[#383838] hover:bg-[#0a0a0a]"
+                    ? "border-zinc-500 bg-zinc-800/60 shadow-sm"
+                    : "border-zinc-800 bg-zinc-900/40 hover:border-zinc-700 hover:bg-zinc-900/80"
                 }`}
               >
-                {/* Row 1: Agent Identity & Status Badge */}
-                <div className="flex flex-wrap items-start justify-between gap-2 mb-2.5">
+                {/* Title & Status */}
+                <div className="flex items-start justify-between gap-2 mb-2">
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-white tracking-wide">
-                        {sess.agent_name}
-                      </span>
-                      {isSelected && (
-                        <span className="inline-flex items-center gap-1 bg-[#00ff66] text-black px-1.5 py-0.2 text-[9px] font-bold">
-                          <CheckCircle2 className="h-2.5 w-2.5" />
-                          ACTIVE TARGET
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 mt-1 text-[10px] text-[#737373]">
-                      <span className="border border-[#262626] bg-[#0f0f0f] px-1.5 py-0.5 uppercase font-bold text-[#a3a3a3]">
+                      <span className="text-sm font-medium text-white">{sess.agent_name}</span>
+                      <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 border border-zinc-700/60 uppercase">
                         {sess.framework}
                       </span>
-                      <span>WF: {sess.workflow_id}</span>
-                      <span>•</span>
-                      <span>ID: {sess.session_id.substring(0, 12)}</span>
+                    </div>
+                    <div className="text-[11px] text-zinc-500 font-mono mt-0.5">
+                      id: {sess.session_id.substring(0, 8)}...
                     </div>
                   </div>
 
-                  <span className={`status-badge ${st.badge}`}>
-                    <span className={`h-1.5 w-1.5 rounded-full ${st.dot}`} />
-                    {st.label}
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium border ${status.pill}`}
+                  >
+                    {status.label}
                   </span>
                 </div>
 
-                {/* Row 2: Budget Utilization Gauge & C2 Controls */}
-                <div className="flex flex-wrap items-end justify-between gap-3 pt-2 border-t border-[#171717]">
-                  <div className="flex-1 min-w-[160px]">
-                    <div className="flex justify-between text-[10px] mb-1">
-                      <span className="text-[#737373]">BUDGET UTILIZATION</span>
-                      <span>
-                        <span className="font-bold text-white">
-                          ${sess.accumulated_cost_usd.toFixed(4)}
-                        </span>
-                        <span className="text-[#666666]"> / ${sess.budget_cap_usd.toFixed(2)}</span>
-                      </span>
+                {/* Spend & Controls */}
+                <div className="flex items-center justify-between gap-4 pt-2.5 border-t border-zinc-800/80">
+                  <div className="flex-1">
+                    <div className="flex justify-between text-[11px] text-zinc-400 mb-1 font-mono">
+                      <span>${sess.accumulated_cost_usd.toFixed(4)}</span>
+                      <span className="text-zinc-500">cap ${sess.budget_cap_usd.toFixed(2)}</span>
                     </div>
-                    <div className="h-1.5 w-full bg-[#141414] overflow-hidden">
+                    <div className="h-1.5 w-full rounded-full bg-zinc-800 overflow-hidden">
                       <div
-                        className={`h-full ${st.bar} transition-all duration-300`}
+                        className={`h-full rounded-full ${status.bar} transition-all duration-300`}
                         style={{ width: `${burnPct}%` }}
                       />
                     </div>
                   </div>
 
-                  <div
-                    className="flex items-center gap-1.5"
-                    onClick={(e) => e.stopPropagation()}
-                  >
+                  <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                     {(sess.status === "RUNNING" || sess.status === "TRIPPED_LOOP") && (
                       <button
-                        title="Transition session to PAUSED_C2 for memory patching or inspection"
+                        title="Pause session for inspection / C2 intervention"
                         onClick={() => onPause(sess.session_id)}
-                        className="flex items-center gap-1 px-2.5 py-1 border border-[#ffb000]/70 bg-[#1a1000] text-[#ffb000] hover:bg-[#ffb000] hover:text-black text-[10px] font-bold transition-colors cursor-pointer"
+                        className="rounded px-2 py-1 border border-zinc-700 hover:bg-zinc-800 text-zinc-300 text-xs font-medium transition-colors cursor-pointer flex items-center gap-1"
                       >
-                        <Pause className="h-3 w-3" />
-                        <span>{sess.status === "TRIPPED_LOOP" ? "UNLOCK C2" : "PAUSE C2"}</span>
+                        <Pause className="h-3 w-3 text-amber-400" />
+                        <span>{sess.status === "TRIPPED_LOOP" ? "Unlock C2" : "Pause"}</span>
                       </button>
                     )}
 
                     {sess.status === "PAUSED_C2" && (
                       <button
-                        title="Resume execution and reset loop detector window"
+                        title="Resume agent execution"
                         onClick={() => onResume(sess.session_id)}
-                        className="flex items-center gap-1 px-2.5 py-1 border border-[#00ff66]/70 bg-[#001808] text-[#00ff66] hover:bg-[#00ff66] hover:text-black text-[10px] font-bold transition-colors cursor-pointer"
+                        className="rounded px-2.5 py-1 border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-medium transition-colors cursor-pointer flex items-center gap-1"
                       >
                         <Play className="h-3 w-3" />
-                        <span>RESUME</span>
+                        <span>Resume</span>
                       </button>
                     )}
 
                     {sess.status !== "TERMINATED" && sess.status !== "COMPLETED" && (
                       <button
-                        title="Execute hard kill-switch (TERMINATED)"
+                        title="Terminate session immediately"
                         onClick={() => onTerminate(sess.session_id)}
-                        className="flex items-center gap-1 px-2.5 py-1 border border-[#ff3333]/70 bg-[#1f0303] text-[#ff4444] hover:bg-[#ff3333] hover:text-black text-[10px] font-bold transition-colors cursor-pointer"
+                        className="rounded p-1 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
                       >
-                        <XOctagon className="h-3 w-3" />
-                        <span>KILL</span>
+                        <XOctagon className="h-3.5 w-3.5" />
                       </button>
                     )}
                   </div>

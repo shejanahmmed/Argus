@@ -118,7 +118,7 @@ export const App: React.FC = () => {
 
   const handleSeedScenario = useCallback(async () => {
     setSeeding(true);
-    setStatusMessage("Seeding multi-agent telemetry scenario...");
+    setStatusMessage("Seeding multi-agent scenario...");
     try {
       const res = await fetch("/api/v1/demo/seed", { method: "POST" });
       if (res.ok) {
@@ -135,7 +135,7 @@ export const App: React.FC = () => {
           await fetchSessionDetails(targetId);
         }
         setStatusMessage(
-          "Seeded 3 live agent sessions: LangGraph Recursive Loop, CrewAI Paused MCP Gate, AutoGPT FinOps."
+          "Initialized 3 agent scenarios (LangGraph Loop, CrewAI Paused Gate, AutoGPT FinOps)."
         );
       }
     } finally {
@@ -269,11 +269,11 @@ export const App: React.FC = () => {
       const data = await res.json();
       if (data.tripped_circuit_breaker) {
         setStatusMessage(
-          `CIRCUIT BREAKER TRIPPED! ${data.warning || "Repetitive tool loop halted."}`
+          `Circuit breaker tripped: ${data.warning || "Repetitive reasoning loop halted."}`
         );
       } else {
         setStatusMessage(
-          "Injected repetitive tool span (click again to trip 3-Tier Loop Breaker)."
+          "Injected identical tool span (click again to trip the circuit breaker)."
         );
       }
       fetchSessions();
@@ -294,7 +294,7 @@ export const App: React.FC = () => {
         tool_args: {
           schema: "billing_prod",
           cascade: true,
-          note: "Simulated high-risk MCP call",
+          note: "Simulated destructive MCP tool call",
         },
         estimated_cost_usd: 0.005,
         hard_cap_usd: 50.0,
@@ -302,7 +302,7 @@ export const App: React.FC = () => {
     });
     if (res.ok) {
       setStatusMessage(
-        `MCP Proxy intercepted destructive tool [drop_production_ledger] (${callId}) and paused session for C2 review!`
+        `MCP Proxy intercepted destructive call [drop_production_ledger] (${callId}) and paused session for human authorization.`
       );
       fetchSessions();
       fetchSessionDetails(selectedSessionId);
@@ -315,11 +315,11 @@ export const App: React.FC = () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         operator_id: "operator_admin",
-        reason: "Operator manual C2 pause",
+        reason: "Operator manual pause",
       }),
     });
     if (res.ok) {
-      setStatusMessage(`Session ${sessionId.substring(0, 8)} transitioned to PAUSED_C2.`);
+      setStatusMessage(`Session ${sessionId.substring(0, 8)} paused.`);
       fetchSessions();
       if (selectedSessionId === sessionId) fetchSessionDetails(sessionId);
     }
@@ -335,7 +335,7 @@ export const App: React.FC = () => {
       }),
     });
     if (res.ok) {
-      setStatusMessage(`Session ${sessionId.substring(0, 8)} resumed (loop tracker cleared).`);
+      setStatusMessage(`Session ${sessionId.substring(0, 8)} resumed.`);
       fetchSessions();
       if (selectedSessionId === sessionId) fetchSessionDetails(sessionId);
     }
@@ -347,7 +347,7 @@ export const App: React.FC = () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         operator_id: "operator_admin",
-        reason: "Operator kill switch",
+        reason: "Operator terminated session",
       }),
     });
     if (res.ok) {
@@ -366,11 +366,11 @@ export const App: React.FC = () => {
         tool_call_id: toolCallId,
         decision: "approve",
         operator_id: "operator_admin",
-        reason: "Security inspection cleared",
+        reason: "Operator approved tool execution",
       }),
     });
     if (res.ok) {
-      setStatusMessage(`Tool call ${toolCallId} approved and logged to SHA-256 chain.`);
+      setStatusMessage(`Tool call ${toolCallId} approved and verified.`);
       fetchSessionDetails(selectedSessionId);
     }
   };
@@ -388,11 +388,11 @@ export const App: React.FC = () => {
         decision: "edit",
         modified_args: modifiedArgs,
         operator_id: "operator_admin",
-        reason: "Parameters sanitized for sandbox execution",
+        reason: "Operator sanitized tool parameters",
       }),
     });
     if (res.ok) {
-      setStatusMessage(`Tool call ${toolCallId} arguments modified and authorized.`);
+      setStatusMessage(`Tool call ${toolCallId} updated with sanitized arguments.`);
       fetchSessionDetails(selectedSessionId);
     }
   };
@@ -410,11 +410,11 @@ export const App: React.FC = () => {
         decision: "mock",
         mock_output: mockOutput,
         operator_id: "operator_admin",
-        reason: "Injected deterministic mock fixture",
+        reason: "Injected mock fixture",
       }),
     });
     if (res.ok) {
-      setStatusMessage(`Tool call ${toolCallId} bypassed with operator mock response.`);
+      setStatusMessage(`Tool call ${toolCallId} resolved with synthetic mock response.`);
       fetchSessionDetails(selectedSessionId);
     }
   };
@@ -429,11 +429,11 @@ export const App: React.FC = () => {
         decision: "reject",
         rejection_reason: reason,
         operator_id: "operator_admin",
-        reason: "Violated organizational safety guardrail",
+        reason: "Security policy guardrail rejection",
       }),
     });
     if (res.ok) {
-      setStatusMessage(`Tool call ${toolCallId} rejected by operator.`);
+      setStatusMessage(`Tool call ${toolCallId} rejected.`);
       fetchSessionDetails(selectedSessionId);
     }
   };
@@ -454,19 +454,19 @@ export const App: React.FC = () => {
           operator_id: "operator_admin",
           expected_parent_checkpoint_id: expectedCpId,
           patches: patches,
-          reason: "Manual RFC 6902 memory mutation",
+          reason: "RFC 6902 memory patch",
         }),
       });
       if (res.ok) {
         const newCp: CheckpointRecord = await res.json();
         setStatusMessage(
-          `RFC 6902 Patch Applied! New Checkpoint Head: ${newCp.checkpoint_id.substring(0, 8)}`
+          `RFC 6902 patch applied. New checkpoint: ${newCp.checkpoint_id.substring(0, 8)}`
         );
         fetchSessions();
         fetchSessionDetails(selectedSessionId);
       } else {
         const err = await res.json();
-        setStatusMessage(`Patch Rejected: ${err.detail || JSON.stringify(err)}`);
+        setStatusMessage(`Patch failed: ${err.detail || JSON.stringify(err)}`);
       }
     } catch {
       setStatusMessage("Invalid JSON Patch syntax.");
@@ -474,7 +474,7 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-black text-[#f2f2f2] font-mono">
+    <div className="flex flex-col min-h-screen bg-[#09090b] text-[#f4f4f5]">
       <Header
         wsConnected={wsConnected}
         sessions={sessions}
@@ -488,9 +488,9 @@ export const App: React.FC = () => {
         hasSelectedSession={Boolean(selectedSessionId)}
       />
 
-      <main className="flex-1 p-5 grid grid-cols-1 lg:grid-cols-12 gap-5 max-w-[1920px] w-full mx-auto">
-        {/* Left Tactical Column: Agent Fleet & Container Logs */}
-        <div className="lg:col-span-4 flex flex-col gap-5">
+      <main className="flex-1 p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-[1920px] w-full mx-auto">
+        {/* Left Column: Fleet List & Container Logs */}
+        <div className="lg:col-span-4 flex flex-col gap-6">
           <FleetOverview
             sessions={sessions}
             selectedSessionId={selectedSessionId}
@@ -505,8 +505,8 @@ export const App: React.FC = () => {
           )}
         </div>
 
-        {/* Right Command Column: Topology, C2 Console & FinOps */}
-        <div className="lg:col-span-8 flex flex-col gap-5">
+        {/* Right Column: Dynamic Workspace Views */}
+        <div className="lg:col-span-8 flex flex-col gap-6">
           {(activeView === "ALL" || activeView === "TOPOLOGY") && (
             <LangGraphVisualizer
               spans={spans}
@@ -543,9 +543,19 @@ export const App: React.FC = () => {
         </div>
       </main>
 
-      <footer className="border-t border-[#1c1c1c] bg-[#030303] px-6 py-3 flex flex-wrap justify-between items-center gap-2 text-[10px] text-[#666666]">
-        <div>ARGUS AGENT GOVERNANCE CONTROL PLANE // ZERO-SPEND SELF-HOSTED INFRASTRUCTURE</div>
-        <div>OPENTELEMETRY GENAI • ARIZE PHOENIX • LANGGRAPH • MCP PROXY • RFC 6902 • SHA-256</div>
+      <footer className="border-t border-zinc-800 bg-[#09090b] px-6 py-4 flex flex-wrap justify-between items-center gap-3 text-xs text-zinc-500">
+        <div>Argus AgentOps & C2 Control Plane • $0 Open-Source Infrastructure</div>
+        <div className="flex items-center gap-4">
+          <span>OpenTelemetry GenAI</span>
+          <span>•</span>
+          <span>Arize Phoenix</span>
+          <span>•</span>
+          <span>LangGraph</span>
+          <span>•</span>
+          <span>RFC 6902</span>
+          <span>•</span>
+          <span>SHA-256 Ledger</span>
+        </div>
       </footer>
     </div>
   );
