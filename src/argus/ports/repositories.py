@@ -80,6 +80,13 @@ class ControlStore(Protocol):
         """Return the most recent checkpoint for a session, or None if none exist."""
         ...
 
+    async def list_sessions(
+        self,
+        ctx: TenantContext,
+    ) -> list[AgentSession]:
+        """List all active and historical sessions within the caller's tenant/workspace."""
+        ...
+
 
 @runtime_checkable
 class BudgetStore(Protocol):

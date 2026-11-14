@@ -153,6 +153,17 @@ class InMemoryControlStore:
             history = self._checkpoints.get(session_id, [])
             return history[-1] if history else None
 
+    async def list_sessions(
+        self,
+        ctx: TenantContext,
+    ) -> list[AgentSession]:
+        async with self._lock:
+            return [
+                session
+                for session in self._sessions.values()
+                if session.tenant_id == ctx.tenant_id and session.workspace_id == ctx.workspace_id
+            ]
+
 
 class InMemoryBudgetStore:
     """Atomic coroutine-safe in-memory implementation of the BudgetStore port."""

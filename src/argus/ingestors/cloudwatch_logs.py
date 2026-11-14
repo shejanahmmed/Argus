@@ -121,3 +121,20 @@ class CloudWatchLogIngestor:
             span_id=extracted_span_id,
             raw_payload=event,
         )
+
+    def parse_batch(
+        self,
+        events: list[dict[str, Any]],
+        *,
+        default_log_group: str = "/aws/ecs/ai-workers",
+        default_log_stream: str = "worker-0",
+    ) -> list[CorrelatedContainerLog]:
+        """Parse a collection of CloudWatch log events."""
+        return [
+            self.parse_log_event(
+                e,
+                default_log_group=default_log_group,
+                default_log_stream=default_log_stream,
+            )
+            for e in events
+        ]

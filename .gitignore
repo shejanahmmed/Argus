@@ -25,6 +25,7 @@ htmlcov/
 # Frontend / Node Artifacts
 node_modules/
 dashboard/dist/
+*.tsbuildinfo
 
 # Secrets & Environment Variables
 .env
