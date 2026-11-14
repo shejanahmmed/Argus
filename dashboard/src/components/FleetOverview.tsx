@@ -51,7 +51,7 @@ export const FleetOverview: React.FC<FleetOverviewProps> = ({
             {sessions.length === 0 ? (
               <tr>
                 <td colSpan={6} className="py-8 text-center text-[#555555]">
-                  NO ACTIVE AGENT SESSIONS REGISTERED
+                  NO ACTIVE AGENT SESSIONS — CLICK [SEED LIVE SCENARIO] IN HEADER
                 </td>
               </tr>
             ) : (
@@ -83,36 +83,36 @@ export const FleetOverview: React.FC<FleetOverviewProps> = ({
                       <button
                         title="Inspect Topology"
                         onClick={() => onSelectSession(sess.session_id)}
-                        className="p-1 border border-[#333333] hover:border-[#00ff66] text-[#aaaaaa] hover:text-[#00ff66] transition-colors"
+                        className="p-1 border border-[#333333] hover:border-[#00ff66] text-[#aaaaaa] hover:text-[#00ff66] transition-colors cursor-pointer"
                       >
                         <Eye className="h-3.5 w-3.5" />
                       </button>
 
-                      {sess.status === "RUNNING" && (
+                      {(sess.status === "RUNNING" || sess.status === "TRIPPED_LOOP") && (
                         <button
-                          title="Pause Session"
+                          title="Enter PAUSED_C2 Mode for Inspection/Patching"
                           onClick={() => onPause(sess.session_id)}
-                          className="p-1 border border-[#333333] hover:border-[#ffb000] text-[#aaaaaa] hover:text-[#ffb000] transition-colors"
+                          className="p-1 border border-[#333333] hover:border-[#ffb000] text-[#aaaaaa] hover:text-[#ffb000] transition-colors cursor-pointer"
                         >
                           <Pause className="h-3.5 w-3.5" />
                         </button>
                       )}
 
-                      {(sess.status === "PAUSED_C2" || sess.status === "TRIPPED_LOOP") && (
+                      {sess.status === "PAUSED_C2" && (
                         <button
                           title="Resume Session"
                           onClick={() => onResume(sess.session_id)}
-                          className="p-1 border border-[#333333] hover:border-[#00ff66] text-[#aaaaaa] hover:text-[#00ff66] transition-colors"
+                          className="p-1 border border-[#333333] hover:border-[#00ff66] text-[#aaaaaa] hover:text-[#00ff66] transition-colors cursor-pointer"
                         >
                           <Play className="h-3.5 w-3.5" />
                         </button>
                       )}
 
-                      {sess.status !== "TERMINATED" && (
+                      {sess.status !== "TERMINATED" && sess.status !== "COMPLETED" && (
                         <button
                           title="Force Kill (Terminate)"
                           onClick={() => onTerminate(sess.session_id)}
-                          className="p-1 border border-[#333333] hover:border-[#ff3333] text-[#aaaaaa] hover:text-[#ff3333] transition-colors"
+                          className="p-1 border border-[#333333] hover:border-[#ff3333] text-[#aaaaaa] hover:text-[#ff3333] transition-colors cursor-pointer"
                         >
                           <XOctagon className="h-3.5 w-3.5" />
                         </button>

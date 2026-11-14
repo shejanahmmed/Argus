@@ -1,17 +1,21 @@
 import React from "react";
-import { Activity, ShieldAlert, Cpu, DollarSign, Radio } from "lucide-react";
+import { Activity, ShieldAlert, Cpu, DollarSign, Radio, Sparkles } from "lucide-react";
 import { AgentSession } from "../types";
 
 interface HeaderProps {
   wsConnected: boolean;
   sessions: AgentSession[];
   pendingInterventionsCount: number;
+  onSeedScenario: () => void;
+  seeding: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   wsConnected,
   sessions,
   pendingInterventionsCount,
+  onSeedScenario,
+  seeding,
 }) => {
   const activeCount = sessions.filter((s) => s.status === "RUNNING").length;
   const trippedCount = sessions.filter(
@@ -41,7 +45,16 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Fleet Metrics Strip */}
-        <div className="flex flex-wrap items-center gap-4 text-xs font-mono">
+        <div className="flex flex-wrap items-center gap-3 text-xs font-mono">
+          <button
+            onClick={onSeedScenario}
+            disabled={seeding}
+            className="flex items-center space-x-1.5 border border-[#00e5ff] bg-[#00151a] px-3 py-1.5 text-[#00e5ff] hover:bg-[#00e5ff] hover:text-black font-bold transition-colors cursor-pointer disabled:opacity-50"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            <span>{seeding ? "SEEDING..." : "SEED LIVE SCENARIO"}</span>
+          </button>
+
           <div className="flex items-center space-x-2 border border-[#222222] bg-[#050505] px-3 py-1.5">
             <Cpu className="h-3.5 w-3.5 text-[#00ff66]" />
             <span className="text-[#888888]">ACTIVE:</span>

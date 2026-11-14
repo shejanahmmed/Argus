@@ -20,10 +20,6 @@ class RecommendRequest(BaseModel):
     min_acceptable_accuracy: float = Field(default=0.50, ge=0.0, le=1.0)
 
 
-class BenchmarkCatalogResponse(BaseModel):
-    catalog: list[dict[str, Any]]
-
-
 @router.get("/roi/{session_id}", response_model=WorkflowROIAttribution)
 async def get_session_roi(
     session_id: uuid.UUID,
@@ -31,15 +27,27 @@ async def get_session_roi(
     container: Annotated[AppContainer, Depends(get_container)],
     workflow_id: str = Query(default="wf_default"),
     assigned_business_value_usd: float = Query(default=100.0, ge=0.0),
-    task_completed: bool = Query(default=True),
+    task_completed: bool | None = Query(default=None),
 ) -> WorkflowROIAttribution:
     """Calculate token financial attribution, exact costs, and net ROI for an agent session."""
+    spans = await container.trace_store.get_session_spans(ctx, session_id)
+    eval_completed, completion_score = container.trajectory_evaluator.evaluate_task_completion(
+        spans
+    )
+    tool_score = container.trajectory_evaluator.evaluate_tool_correctness(spans, set())
+    effective_completed = task_completed if task_completed is not None else eval_completed
+    effective_comp_score = (
+        1.0 if effective_completed and completion_score == 0.0 else completion_score
+    )
+
     return await container.roi_engine.calculate_session_roi(
         ctx=ctx,
         session_id=session_id,
         workflow_id=workflow_id,
         assigned_business_value_usd=assigned_business_value_usd,
-        task_completed=task_completed,
+        task_completed=effective_completed,
+        task_completion_score=effective_comp_score,
+        tool_correctness_score=tool_score,
     )
 
 

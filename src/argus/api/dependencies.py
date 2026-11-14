@@ -13,6 +13,7 @@ from argus.adapters_infra.in_memory import (
     InMemoryEventBus,
     InMemoryTraceStore,
 )
+from argus.attribution.evaluator import TrajectoryEvaluator
 from argus.attribution.hf_benchmarks import HuggingFaceBenchmarkAnalyzer
 from argus.attribution.roi_engine import ROIEngine
 from argus.c2.audit_ledger import C2AuditLedger
@@ -22,6 +23,9 @@ from argus.core.schemas import PendingToolCall
 from argus.core.tenancy import Role, TenantContext
 from argus.governance.budget_guard import BudgetGuard
 from argus.governance.loop_detector import LoopDetector
+from argus.governance.mcp_proxy import McpGovernanceProxy
+from argus.ingestors.cloudwatch_logs import CorrelatedContainerLog
+from argus.ingestors.phoenix_bridge import ArizePhoenixBridge
 from argus.ports.repositories import (
     AuditStore,
     BudgetStore,
@@ -44,13 +48,21 @@ class AppContainer:
         self.audit_ledger = C2AuditLedger(audit_store=self.audit_store)
         self.loop_detector = LoopDetector()
         self.budget_guard = BudgetGuard(backend=self.budget_store)
+        self.mcp_proxy = McpGovernanceProxy(
+            loop_detector=self.loop_detector,
+            budget_guard=self.budget_guard,
+        )
         self.c2_state_manager = C2StateManager(control_store=self.control_store)
         self.tool_override_engine = ToolOverrideEngine()
         self.roi_engine = ROIEngine(trace_store=self.trace_store)
+        self.trajectory_evaluator = TrajectoryEvaluator()
         self.benchmark_analyzer = HuggingFaceBenchmarkAnalyzer()
+        self.phoenix_bridge = ArizePhoenixBridge()
 
         # In-memory tracking for pending intercepted tool calls: session_id -> list[PendingToolCall]
         self.pending_tool_calls: dict[str, list[PendingToolCall]] = {}
+        # Recent correlated container logs ring buffer
+        self.container_logs: list[CorrelatedContainerLog] = []
 
     def reset(self) -> None:
         """Reset internal stores to clean state for test isolation."""
@@ -63,10 +75,16 @@ class AppContainer:
         self.audit_ledger = C2AuditLedger(audit_store=self.audit_store)
         self.loop_detector = LoopDetector()
         self.budget_guard = BudgetGuard(backend=self.budget_store)
+        self.mcp_proxy = McpGovernanceProxy(
+            loop_detector=self.loop_detector,
+            budget_guard=self.budget_guard,
+        )
         self.c2_state_manager = C2StateManager(control_store=self.control_store)
         self.tool_override_engine = ToolOverrideEngine()
         self.roi_engine = ROIEngine(trace_store=self.trace_store)
+        self.trajectory_evaluator = TrajectoryEvaluator()
         self.pending_tool_calls.clear()
+        self.container_logs.clear()
 
 
 _container = AppContainer()

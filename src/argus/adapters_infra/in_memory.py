@@ -164,6 +164,22 @@ class InMemoryControlStore:
                 if session.tenant_id == ctx.tenant_id and session.workspace_id == ctx.workspace_id
             ]
 
+    async def add_session_cost(
+        self,
+        ctx: TenantContext,
+        session_id: uuid.UUID,
+        cost_usd: float,
+    ) -> AgentSession:
+        async with self._lock:
+            session = self._sessions.get(session_id)
+            if session is None:
+                raise EntityNotFoundError("AgentSession", str(session_id))
+            ctx.assert_same_tenant(session.tenant_id, session.workspace_id)
+            new_cost = round(session.accumulated_cost_usd + max(0.0, cost_usd), 8)
+            updated = session.model_copy(update={"accumulated_cost_usd": new_cost})
+            self._sessions[session_id] = updated
+            return updated
+
 
 class InMemoryBudgetStore:
     """Atomic coroutine-safe in-memory implementation of the BudgetStore port."""
@@ -273,6 +289,12 @@ class InMemoryEventBus:
         key = (ctx.tenant_id, ctx.workspace_id, channel)
         for queue in list(self._subscribers.get(key, set())):
             await queue.put(event)
+
+        if channel != "*":
+            wildcard_key = (ctx.tenant_id, ctx.workspace_id, "*")
+            wildcard_envelope = {"channel": channel, "event": event, **event}
+            for queue in list(self._subscribers.get(wildcard_key, set())):
+                await queue.put(wildcard_envelope)
 
     def subscribe(
         self,

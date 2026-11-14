@@ -92,12 +92,13 @@ class C2StateManager:
         session_id: uuid.UUID,
         reason: str,
     ) -> AgentSession:
-        """Pause a running agent session for human C2 inspection."""
+        """Pause a running or loop-tripped agent session for human C2 inspection."""
         ctx.assert_can_mutate_c2()
+        session = await self._store.get_session(ctx, session_id)
         return await self._store.transition_session(
             ctx=ctx,
             session_id=session_id,
-            expected_status=SessionStatus.RUNNING,
+            expected_status=session.status,
             next_status=SessionStatus.PAUSED_C2,
         )
 

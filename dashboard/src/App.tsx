@@ -9,6 +9,8 @@ import {
   AgentSession,
   ArgusSpan,
   PendingToolCall,
+  CheckpointRecord,
+  AuditLogResponse,
   WorkflowROIAttribution,
   ModelBenchmarkEntry,
   DowngradeRecommendation,
@@ -17,17 +19,20 @@ import {
 
 export const App: React.FC = () => {
   const [wsConnected, setWsConnected] = useState<boolean>(false);
+  const [seeding, setSeeding] = useState<boolean>(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [spans, setSpans] = useState<ArgusSpan[]>([]);
   const [selectedSpan, setSelectedSpan] = useState<ArgusSpan | null>(null);
   const [pendingTools, setPendingTools] = useState<PendingToolCall[]>([]);
+  const [latestCheckpoint, setLatestCheckpoint] = useState<CheckpointRecord | null>(null);
+  const [auditLog, setAuditLog] = useState<AuditLogResponse | null>(null);
   const [roi, setRoi] = useState<WorkflowROIAttribution | null>(null);
   const [benchmarks, setBenchmarks] = useState<ModelBenchmarkEntry[]>([]);
   const [recommendations, setRecommendations] = useState<DowngradeRecommendation[]>([]);
   const [logs, setLogs] = useState<ContainerLog[]>([]);
 
-  // 1. Fetch initial sessions and benchmark catalog
   const fetchSessions = useCallback(async () => {
     try {
       const res = await fetch("/api/v1/telemetry/sessions");
@@ -42,6 +47,18 @@ export const App: React.FC = () => {
       // Offline fallback
     }
   }, [selectedSessionId]);
+
+  const fetchCloudWatchLogs = useCallback(async () => {
+    try {
+      const res = await fetch("/api/v1/telemetry/cloudwatch");
+      if (res.ok) {
+        const data: ContainerLog[] = await res.json();
+        setLogs(data);
+      }
+    } catch {
+      // Offline fallback
+    }
+  }, []);
 
   const fetchBenchmarks = useCallback(async () => {
     try {
@@ -64,12 +81,13 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // 2. Fetch session specific telemetry
   const fetchSessionDetails = useCallback(async (sessionId: string) => {
     try {
-      const [spansRes, toolsRes, roiRes] = await Promise.all([
+      const [spansRes, toolsRes, cpRes, auditRes, roiRes] = await Promise.all([
         fetch(`/api/v1/telemetry/sessions/${sessionId}/spans`),
         fetch(`/api/v1/c2/${sessionId}/pending-tools`),
+        fetch(`/api/v1/c2/${sessionId}/checkpoints/latest`),
+        fetch(`/api/v1/c2/${sessionId}/audit-log`),
         fetch(`/api/v1/attribution/roi/${sessionId}?assigned_business_value_usd=100.0`),
       ]);
 
@@ -81,6 +99,14 @@ export const App: React.FC = () => {
       if (toolsRes.ok) {
         const tData: PendingToolCall[] = await toolsRes.json();
         setPendingTools(tData);
+      }
+      if (cpRes.ok) {
+        const cpData: CheckpointRecord | null = await cpRes.json();
+        setLatestCheckpoint(cpData);
+      }
+      if (auditRes.ok) {
+        const auditData: AuditLogResponse = await auditRes.json();
+        setAuditLog(auditData);
       }
       if (roiRes.ok) {
         const rData: WorkflowROIAttribution = await roiRes.json();
@@ -94,7 +120,8 @@ export const App: React.FC = () => {
   useEffect(() => {
     fetchSessions();
     fetchBenchmarks();
-  }, [fetchSessions, fetchBenchmarks]);
+    fetchCloudWatchLogs();
+  }, [fetchSessions, fetchBenchmarks, fetchCloudWatchLogs]);
 
   useEffect(() => {
     if (selectedSessionId) {
@@ -102,7 +129,6 @@ export const App: React.FC = () => {
     }
   }, [selectedSessionId, fetchSessionDetails]);
 
-  // 3. WebSocket Real-time event subscription
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = window.location.host;
@@ -122,34 +148,19 @@ export const App: React.FC = () => {
         ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
-            if (data.channel === "telemetry.spans" || data.topic === "span.ingested") {
-              fetchSessions();
-              if (selectedSessionId) fetchSessionDetails(selectedSessionId);
-            } else if (
+            if (
+              data.channel === "telemetry.spans" ||
+              data.channel === "telemetry.sessions" ||
               data.channel === "governance.circuit_breaker" ||
-              data.topic === "circuit_breaker.tripped"
-            ) {
-              fetchSessions();
-            } else if (
+              data.channel === "c2.state_changed" ||
+              data.channel === "c2.checkpoint_created" ||
               data.channel === "c2.intervention_required" ||
               data.channel === "c2.override_resolved"
             ) {
+              fetchSessions();
               if (selectedSessionId) fetchSessionDetails(selectedSessionId);
             } else if (data.channel === "telemetry.cloudwatch") {
-              setLogs((prev) => [
-                {
-                  log_id: String(Date.now()),
-                  timestamp: new Date().toISOString(),
-                  log_group: "/aws/ecs/ai-workers",
-                  log_stream: "worker-0",
-                  severity: data.event?.anomalies_count > 0 ? "ERROR" : "INFO",
-                  message: `CloudWatch batch ingested: ${data.event?.total_logs ?? 0} events.`,
-                  is_container_anomaly: (data.event?.anomalies_count ?? 0) > 0,
-                  trace_id: null,
-                  span_id: null,
-                },
-                ...prev.slice(0, 49),
-              ]);
+              fetchCloudWatchLogs();
             }
           } catch {
             // Non-JSON frame
@@ -177,39 +188,70 @@ export const App: React.FC = () => {
       if (reconnectTimer) clearTimeout(reconnectTimer);
       ws?.close();
     };
-  }, [fetchSessions, fetchSessionDetails, selectedSessionId]);
+  }, [fetchSessions, fetchSessionDetails, fetchCloudWatchLogs, selectedSessionId]);
 
-  // 4. Operator C2 Handlers
+  const handleSeedScenario = async () => {
+    setSeeding(true);
+    setStatusMessage("Seeding multi-agent scenario...");
+    try {
+      const res = await fetch("/api/v1/demo/seed", { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        await fetchSessions();
+        await fetchCloudWatchLogs();
+        if (data.paused_c2_session_id) {
+          setSelectedSessionId(data.paused_c2_session_id);
+          await fetchSessionDetails(data.paused_c2_session_id);
+        }
+        setStatusMessage("Seeded 3 live agent sessions (LangGraph Loop, CrewAI Paused C2, AutoGPT FinOps).");
+      }
+    } finally {
+      setSeeding(false);
+    }
+  };
+
   const handlePause = async (sessionId: string) => {
-    await fetch(`/api/v1/c2/${sessionId}/pause`, {
+    const res = await fetch(`/api/v1/c2/${sessionId}/pause`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ operator_id: "human_op", reason: "Operator manual pause" }),
     });
-    fetchSessions();
+    if (res.ok) {
+      setStatusMessage(`Session ${sessionId.substring(0, 8)} transitioned to PAUSED_C2.`);
+      fetchSessions();
+      if (selectedSessionId === sessionId) fetchSessionDetails(sessionId);
+    }
   };
 
   const handleResume = async (sessionId: string) => {
-    await fetch(`/api/v1/c2/${sessionId}/resume`, {
+    const res = await fetch(`/api/v1/c2/${sessionId}/resume`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ operator_id: "human_op", reason: "Operator resumed session" }),
     });
-    fetchSessions();
+    if (res.ok) {
+      setStatusMessage(`Session ${sessionId.substring(0, 8)} resumed (loop tracker cleared).`);
+      fetchSessions();
+      if (selectedSessionId === sessionId) fetchSessionDetails(sessionId);
+    }
   };
 
   const handleTerminate = async (sessionId: string) => {
-    await fetch(`/api/v1/c2/${sessionId}/terminate`, {
+    const res = await fetch(`/api/v1/c2/${sessionId}/terminate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ operator_id: "human_op", reason: "Operator kill switch" }),
     });
-    fetchSessions();
+    if (res.ok) {
+      setStatusMessage(`Session ${sessionId.substring(0, 8)} terminated.`);
+      fetchSessions();
+      if (selectedSessionId === sessionId) fetchSessionDetails(sessionId);
+    }
   };
 
   const handleApproveTool = async (toolCallId: string) => {
     if (!selectedSessionId) return;
-    await fetch(`/api/v1/c2/${selectedSessionId}/tool-override`, {
+    const res = await fetch(`/api/v1/c2/${selectedSessionId}/tool-override`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -219,7 +261,10 @@ export const App: React.FC = () => {
         reason: "Security inspection cleared",
       }),
     });
-    fetchSessionDetails(selectedSessionId);
+    if (res.ok) {
+      setStatusMessage(`Tool call ${toolCallId} approved and logged to SHA-256 chain.`);
+      fetchSessionDetails(selectedSessionId);
+    }
   };
 
   const handleEditTool = async (
@@ -227,7 +272,7 @@ export const App: React.FC = () => {
     modifiedArgs: Record<string, unknown>
   ) => {
     if (!selectedSessionId) return;
-    await fetch(`/api/v1/c2/${selectedSessionId}/tool-override`, {
+    const res = await fetch(`/api/v1/c2/${selectedSessionId}/tool-override`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -238,7 +283,10 @@ export const App: React.FC = () => {
         reason: "Parameters sanitized for sandbox execution",
       }),
     });
-    fetchSessionDetails(selectedSessionId);
+    if (res.ok) {
+      setStatusMessage(`Tool call ${toolCallId} arguments modified and authorized.`);
+      fetchSessionDetails(selectedSessionId);
+    }
   };
 
   const handleMockTool = async (
@@ -246,7 +294,7 @@ export const App: React.FC = () => {
     mockOutput: Record<string, unknown>
   ) => {
     if (!selectedSessionId) return;
-    await fetch(`/api/v1/c2/${selectedSessionId}/tool-override`, {
+    const res = await fetch(`/api/v1/c2/${selectedSessionId}/tool-override`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -257,12 +305,15 @@ export const App: React.FC = () => {
         reason: "Injected deterministic mock fixture",
       }),
     });
-    fetchSessionDetails(selectedSessionId);
+    if (res.ok) {
+      setStatusMessage(`Tool call ${toolCallId} bypassed with operator mock response.`);
+      fetchSessionDetails(selectedSessionId);
+    }
   };
 
   const handleRejectTool = async (toolCallId: string, reason: string) => {
     if (!selectedSessionId) return;
-    await fetch(`/api/v1/c2/${selectedSessionId}/tool-override`, {
+    const res = await fetch(`/api/v1/c2/${selectedSessionId}/tool-override`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -273,49 +324,58 @@ export const App: React.FC = () => {
         reason: "Violated organizational safety guardrail",
       }),
     });
-    fetchSessionDetails(selectedSessionId);
+    if (res.ok) {
+      setStatusMessage(`Tool call ${toolCallId} rejected by operator.`);
+      fetchSessionDetails(selectedSessionId);
+    }
   };
 
   const handleApplyPatch = async (patchesJson: string) => {
     if (!selectedSessionId) return;
     try {
       const patches = JSON.parse(patchesJson);
+      const expectedCpId =
+        latestCheckpoint?.checkpoint_id ??
+        sessions.find((s) => s.session_id === selectedSessionId)?.latest_checkpoint_id ??
+        null;
+
       const res = await fetch(`/api/v1/c2/${selectedSessionId}/patch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           operator_id: "human_op",
-          expected_parent_checkpoint_id:
-            sessions.find((s) => s.session_id === selectedSessionId)?.latest_checkpoint_id ||
-            "00000000-0000-0000-0000-000000000000",
+          expected_parent_checkpoint_id: expectedCpId,
           patches: patches,
-          reason: "Manual state update",
+          reason: "Manual RFC 6902 memory mutation",
         }),
       });
       if (res.ok) {
-        alert("RFC 6902 Patch Applied Successfully!");
+        const newCp: CheckpointRecord = await res.json();
+        setStatusMessage(
+          `RFC 6902 Patch Applied! New Checkpoint: ${newCp.checkpoint_id.substring(0, 8)}`
+        );
+        fetchSessions();
         fetchSessionDetails(selectedSessionId);
       } else {
         const err = await res.json();
-        alert(`Patch Failed: ${err.detail || JSON.stringify(err)}`);
+        setStatusMessage(`Patch Rejected: ${err.detail || JSON.stringify(err)}`);
       }
     } catch {
-      alert("Invalid JSON Patch syntax");
+      setStatusMessage("Invalid JSON Patch syntax.");
     }
   };
 
   return (
     <div className="flex flex-col min-h-screen bg-black text-[#e0e0e0] font-mono">
-      {/* 1. Header Bar */}
       <Header
         wsConnected={wsConnected}
         sessions={sessions}
         pendingInterventionsCount={pendingTools.length}
+        onSeedScenario={handleSeedScenario}
+        seeding={seeding}
       />
 
-      {/* Main Grid View */}
       <main className="flex-1 p-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* Left Column (5 Cols): Fleet State Matrix & Log Stream */}
         <div className="lg:col-span-5 flex flex-col space-y-4">
           <FleetOverview
             sessions={sessions}
@@ -328,7 +388,6 @@ export const App: React.FC = () => {
           <LogWaterfall logs={logs} />
         </div>
 
-        {/* Right Column (7 Cols): Topology Visualizer, C2 Controls, ROI */}
         <div className="lg:col-span-7 flex flex-col space-y-4">
           <LangGraphVisualizer
             spans={spans}
@@ -339,6 +398,9 @@ export const App: React.FC = () => {
           <C2ControlPanel
             sessionId={selectedSessionId}
             pendingTools={pendingTools}
+            latestCheckpoint={latestCheckpoint}
+            auditLog={auditLog}
+            statusMessage={statusMessage}
             onApproveTool={handleApproveTool}
             onEditTool={handleEditTool}
             onMockTool={handleMockTool}
@@ -354,7 +416,6 @@ export const App: React.FC = () => {
         </div>
       </main>
 
-      {/* Footer Info Strip */}
       <footer className="border-t border-[#181818] bg-[#000000] px-6 py-2 flex justify-between text-[10px] text-[#555555]">
         <div>ARGUS AGENT GOVERNANCE CONTROL PLANE // LOCAL ZERO-SPEND STACK</div>
         <div>OPENTELEMETRY • LANGGRAPH • CREWAI • PHOENIX OSS • RFC 6902</div>

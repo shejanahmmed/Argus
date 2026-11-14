@@ -87,6 +87,15 @@ class ControlStore(Protocol):
         """List all active and historical sessions within the caller's tenant/workspace."""
         ...
 
+    async def add_session_cost(
+        self,
+        ctx: TenantContext,
+        session_id: uuid.UUID,
+        cost_usd: float,
+    ) -> AgentSession:
+        """Atomically increment accumulated_cost_usd on an existing session."""
+        ...
+
 
 @runtime_checkable
 class BudgetStore(Protocol):

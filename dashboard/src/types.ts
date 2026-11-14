@@ -6,7 +6,7 @@ export type SessionStatus =
   | "COMPLETED"
   | "TERMINATED";
 
-export type AgentFramework = "langgraph" | "crewai" | "autogpt" | "custom";
+export type AgentFramework = "langgraph" | "lcel" | "crewai" | "autogpt" | "mcp" | "custom";
 
 export interface AgentSession {
   session_id: string;
@@ -55,6 +55,40 @@ export interface PendingToolCall {
   request_digest_sha256?: string;
 }
 
+export interface CheckpointRecord {
+  checkpoint_id: string;
+  parent_checkpoint_id: string | null;
+  tenant_id: string;
+  workspace_id: string;
+  session_id: string;
+  node_name: string;
+  step_index: number;
+  memory_state: Record<string, unknown>;
+  pending_tool_call: PendingToolCall | null;
+  created_at: string;
+}
+
+export interface AuditLogEntry {
+  audit_id: string;
+  tenant_id: string;
+  workspace_id: string;
+  session_id: string;
+  actor_id: string;
+  actor_role: string;
+  event_type: string;
+  payload: Record<string, unknown>;
+  payload_sha256: string;
+  prev_entry_hash: string;
+  entry_hash: string;
+  created_at: string;
+}
+
+export interface AuditLogResponse {
+  session_id: string;
+  chain_verified: boolean;
+  entries: AuditLogEntry[];
+}
+
 export interface WorkflowROIAttribution {
   session_id: string;
   workflow_id: string;
@@ -66,7 +100,7 @@ export interface WorkflowROIAttribution {
   wasted_loop_cost_usd: number;
   total_cost_usd: number;
   net_roi_usd: number;
-  roi_ratio: number;
+  roi_percentage: number;
   task_completed: boolean;
   task_completion_score: number;
   tool_correctness_score: number;

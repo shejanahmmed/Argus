@@ -21,6 +21,7 @@ from argus.core.schemas import (
     SpanKind,
 )
 from argus.core.tenancy import Role, TenantContext
+from argus.sdk.c2_client import ArgusC2Client
 
 
 @pytest.fixture(autouse=True)
@@ -51,6 +52,14 @@ async def test_health_and_root_endpoints() -> None:
         res_root = await client.get("/")
         assert res_root.status_code == 200
         assert "docs_url" in res_root.json()
+
+        res_ready = await client.get("/readyz")
+        assert res_ready.status_code == 200
+        assert res_ready.json()["status"] == "READY"
+
+        res_metrics = await client.get("/metrics")
+        assert res_metrics.status_code == 200
+        assert "argus_sessions_total" in res_metrics.text
 
 
 @pytest.mark.asyncio
@@ -418,3 +427,158 @@ async def test_attribution_and_benchmarks(auth_headers: dict[str, str]) -> None:
         recs = rec_resp.json()
         assert len(recs) > 0
         assert "cost_savings_pct" in recs[0]
+
+
+@pytest.mark.asyncio
+async def test_mcp_proxy_interception_and_phoenix_export(auth_headers: dict[str, str]) -> None:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        # 1. Create session via REST API
+        create_resp = await client.post(
+            "/api/v1/telemetry/sessions",
+            headers=auth_headers,
+            json={
+                "workflow_id": "wf_mcp_test",
+                "agent_name": "mcp_guard_agent",
+                "framework": "langgraph",
+                "budget_cap_usd": 20.0,
+            },
+        )
+        assert create_resp.status_code == 200
+        session_id = create_resp.json()["session_id"]
+
+        # 2. Filter MCP tools list by RBAC policy
+        tools_resp = await client.post(
+            "/api/v1/governance/mcp/tools-list",
+            headers=auth_headers,
+            json={
+                "available_tools": [
+                    {
+                        "name": "safe_search",
+                        "description": "Search internal documentation.",
+                        "allowed_roles": ["ADMIN", "OPERATOR"],
+                    }
+                ]
+            },
+        )
+        assert tools_resp.status_code == 200
+        sanitized_tools = tools_resp.json()
+        assert len(sanitized_tools) == 1
+        assert sanitized_tools[0]["name"] == "safe_search"
+
+        # 3. Intercept destructive MCP tool call -> pauses session and queues PendingToolCall
+        intercept_resp = await client.post(
+            "/api/v1/governance/mcp/intercept",
+            headers=auth_headers,
+            json={
+                "session_id": session_id,
+                "tool_call_id": "call_999",
+                "tool_name": "delete_production_cluster",
+                "tool_args": {"cluster": "prod-us-east-1"},
+            },
+        )
+        assert intercept_resp.status_code == 200
+        data = intercept_resp.json()
+        assert data["verdict"]["recommended_action"] == "PAUSE_FOR_C2"
+        assert data["pending_tool_call"]["tool_call_id"] == "call_999"
+
+        # Verify session is paused and pending tool is queued
+        pending_resp = await client.get(
+            f"/api/v1/c2/{session_id}/pending-tools",
+            headers=auth_headers,
+        )
+        assert len(pending_resp.json()) == 1
+
+        # Create a checkpoint and trigger an operator pause/resume to populate audit log
+        await client.post(
+            f"/api/v1/c2/{session_id}/resume",
+            headers=auth_headers,
+            json={"operator_id": "admin_user", "reason": "Reviewed and cleared"},
+        )
+
+        # Verify audit log hash chain integrity
+        audit_resp = await client.get(
+            f"/api/v1/c2/{session_id}/audit-log",
+            headers=auth_headers,
+        )
+        assert audit_resp.status_code == 200
+        assert audit_resp.json()["chain_verified"] is True
+        assert len(audit_resp.json()["entries"]) >= 1
+
+
+@pytest.mark.asyncio
+async def test_demo_seeder_and_phoenix_export(auth_headers: dict[str, str]) -> None:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        seed_resp = await client.post("/api/v1/demo/seed", headers=auth_headers)
+        assert seed_resp.status_code == 200
+        seed_data = seed_resp.json()
+        assert seed_data["status"] == "seeded"
+        assert len(seed_data["sessions_created"]) == 3
+
+        first_session_id = seed_data["sessions_created"][0]
+
+        # Export session spans in Arize Phoenix OpenInference format
+        phoenix_resp = await client.get(
+            f"/api/v1/telemetry/sessions/{first_session_id}/phoenix",
+            headers=auth_headers,
+        )
+        assert phoenix_resp.status_code == 200
+        phoenix_data = phoenix_resp.json()
+        assert phoenix_data["span_count"] >= 3
+        assert "openinference.span.kind" in phoenix_data["openinference_spans"][0]["attributes"]
+
+        # Retrieve CloudWatch logs ring buffer
+        cw_resp = await client.get("/api/v1/telemetry/cloudwatch", headers=auth_headers)
+        assert cw_resp.status_code == 200
+        assert len(cw_resp.json()) >= 2
+
+
+@pytest.mark.asyncio
+async def test_argus_c2_sdk_client(auth_headers: dict[str, str]) -> None:
+    ctx = TenantContext(
+        tenant_id=auth_headers["X-Tenant-ID"],
+        workspace_id=auth_headers["X-Workspace-ID"],
+        actor_id=auth_headers["X-Actor-ID"],
+        role=Role.ADMIN,
+    )
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as http_client:
+        sdk = ArgusC2Client(
+            ctx,
+            base_url="http://testserver",
+            client=http_client,
+        )
+        session = await sdk.register_session(
+            workflow_id="sdk_workflow",
+            agent_name="sdk_agent",
+            framework=AgentFramework.LANGGRAPH,
+            budget_cap_usd=15.0,
+        )
+        session_id = session.session_id
+
+        cp1 = await sdk.save_checkpoint(
+            session_id=session_id,
+            node_name="step_1",
+            step_index=0,
+            memory_state={"step": 1},
+            expected_parent_checkpoint_id=None,
+        )
+        assert cp1.node_name == "step_1"
+
+        latest = await sdk.get_latest_checkpoint(session_id)
+        assert latest is not None
+        assert latest.checkpoint_id == cp1.checkpoint_id
+
+        verdict, pending = await sdk.intercept_tool_call(
+            session_id=session_id,
+            tool_call_id="sdk_tool_1",
+            tool_name="drop_database",
+            tool_args={"db": "analytics"},
+        )
+        assert verdict.recommended_action.value == "PAUSE_FOR_C2"
+        assert pending is not None
+        assert pending.tool_call_id == "sdk_tool_1"

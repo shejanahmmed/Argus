@@ -15,9 +15,10 @@ from argus.core.errors import (
     EntityNotFoundError,
     InvalidStateTransitionError,
 )
-from argus.core.ids import new_uuid7
+from argus.core.ids import new_uuid7, utc_now
 from argus.core.schemas import (
     AgentSession,
+    AuditLogEntry,
     C2OverrideCommand,
     CheckpointRecord,
     JsonPatchOp,
@@ -34,9 +35,17 @@ class StateTransitionRequest(BaseModel):
     reason: str
 
 
+class CreateCheckpointRequest(BaseModel):
+    node_name: str = Field(min_length=1, max_length=128)
+    step_index: int = Field(default=0, ge=0)
+    memory_state: dict[str, Any] = Field(default_factory=dict)
+    expected_parent_checkpoint_id: uuid.UUID | None = None
+    pending_tool_call: PendingToolCall | None = None
+
+
 class ApplyPatchRequest(BaseModel):
     operator_id: str
-    expected_parent_checkpoint_id: uuid.UUID
+    expected_parent_checkpoint_id: uuid.UUID | None = None
     patches: list[JsonPatchOp] = Field(min_length=1)
     reason: str = "Operator memory mutation"
 
@@ -51,6 +60,12 @@ class SubmitOverrideRequest(BaseModel):
     reason: str
 
 
+class AuditLogResponse(BaseModel):
+    session_id: str
+    chain_verified: bool
+    entries: list[AuditLogEntry]
+
+
 @router.post("/{session_id}/pause", response_model=AgentSession)
 async def pause_session(
     session_id: uuid.UUID,
@@ -58,12 +73,18 @@ async def pause_session(
     ctx: Annotated[TenantContext, Depends(get_tenant_context)],
     container: Annotated[AppContainer, Depends(get_container)],
 ) -> AgentSession:
-    """Operator intervention: Pause an active agent session."""
+    """Operator intervention: Pause an active or loop-tripped agent session."""
     try:
         session = await container.c2_state_manager.pause_session(
             ctx=ctx,
             session_id=session_id,
             reason=payload.reason,
+        )
+        await container.audit_store.append_event(
+            ctx,
+            session_id=session_id,
+            event_type="C2_PAUSE",
+            payload={"operator_id": payload.operator_id, "reason": payload.reason},
         )
         await container.event_bus.publish(
             ctx,
@@ -91,11 +112,18 @@ async def resume_session(
     ctx: Annotated[TenantContext, Depends(get_tenant_context)],
     container: Annotated[AppContainer, Depends(get_container)],
 ) -> AgentSession:
-    """Operator intervention: Resume a paused agent session."""
+    """Operator intervention: Resume a paused agent session and reset loop history."""
     try:
         session = await container.c2_state_manager.resume_session(
             ctx=ctx,
             session_id=session_id,
+        )
+        container.loop_detector.reset_session(str(session_id))
+        await container.audit_store.append_event(
+            ctx,
+            session_id=session_id,
+            event_type="C2_RESUME",
+            payload={"operator_id": payload.operator_id, "reason": payload.reason},
         )
         await container.event_bus.publish(
             ctx,
@@ -130,6 +158,12 @@ async def terminate_session(
             session_id=session_id,
             reason=payload.reason,
         )
+        await container.audit_store.append_event(
+            ctx,
+            session_id=session_id,
+            event_type="C2_TERMINATE",
+            payload={"operator_id": payload.operator_id, "reason": payload.reason},
+        )
         await container.event_bus.publish(
             ctx,
             channel="c2.state_changed",
@@ -149,6 +183,61 @@ async def terminate_session(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(err)) from err
 
 
+@router.post("/{session_id}/checkpoints", response_model=CheckpointRecord)
+async def create_checkpoint(
+    session_id: uuid.UUID,
+    payload: CreateCheckpointRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    container: Annotated[AppContainer, Depends(get_container)],
+) -> CheckpointRecord:
+    """Persist a new versioned agent checkpoint with optimistic concurrency verification."""
+    try:
+        checkpoint = CheckpointRecord(
+            checkpoint_id=new_uuid7(),
+            parent_checkpoint_id=payload.expected_parent_checkpoint_id,
+            tenant_id=ctx.tenant_id,
+            workspace_id=ctx.workspace_id,
+            session_id=session_id,
+            node_name=payload.node_name,
+            step_index=payload.step_index,
+            memory_state=payload.memory_state,
+            pending_tool_call=payload.pending_tool_call,
+            created_at=utc_now(),
+        )
+        saved = await container.control_store.save_checkpoint(
+            ctx=ctx,
+            checkpoint=checkpoint,
+            expected_parent_id=payload.expected_parent_checkpoint_id,
+        )
+        await container.event_bus.publish(
+            ctx,
+            channel="c2.checkpoint_created",
+            event={
+                "session_id": str(session_id),
+                "checkpoint_id": str(saved.checkpoint_id),
+                "node_name": saved.node_name,
+            },
+        )
+        return saved
+    except CheckpointConflictError as err:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(err)) from err
+    except EntityNotFoundError as err:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err)) from err
+
+
+@router.get("/{session_id}/checkpoints/latest", response_model=CheckpointRecord | None)
+async def get_latest_checkpoint(
+    session_id: uuid.UUID,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    container: Annotated[AppContainer, Depends(get_container)],
+) -> CheckpointRecord | None:
+    """Retrieve the latest checkpoint snapshot for an agent session."""
+    try:
+        return await container.control_store.get_latest_checkpoint(ctx, session_id)
+    except EntityNotFoundError as err:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err)) from err
+
+
 @router.post("/{session_id}/patch", response_model=CheckpointRecord)
 async def apply_json_patch_state(
     session_id: uuid.UUID,
@@ -157,23 +246,30 @@ async def apply_json_patch_state(
     container: Annotated[AppContainer, Depends(get_container)],
 ) -> CheckpointRecord:
     """Apply RFC 6902 JSON patch to agent checkpoint with optimistic lock verification."""
-    op_role: Literal[Role.OPERATOR, Role.ADMIN] = (
-        Role.ADMIN if ctx.role == Role.ADMIN else Role.OPERATOR
-    )
-    command = C2OverrideCommand(
-        command_id=new_uuid7(),
-        tenant_id=ctx.tenant_id,
-        workspace_id=ctx.workspace_id,
-        session_id=session_id,
-        expected_checkpoint_id=payload.expected_parent_checkpoint_id,
-        operator_id=payload.operator_id,
-        operator_role=op_role,
-        action="EDIT_MEMORY",
-        memory_patch=tuple(payload.patches),
-        reason=payload.reason,
-    )
-
     try:
+        expected_cp_id = payload.expected_parent_checkpoint_id
+        if expected_cp_id is None:
+            latest_cp = await container.control_store.get_latest_checkpoint(ctx, session_id)
+            if latest_cp is None:
+                raise EntityNotFoundError("CheckpointRecord", str(session_id))
+            expected_cp_id = latest_cp.checkpoint_id
+
+        op_role: Literal[Role.OPERATOR, Role.ADMIN] = (
+            Role.ADMIN if ctx.role == Role.ADMIN else Role.OPERATOR
+        )
+        command = C2OverrideCommand(
+            command_id=new_uuid7(),
+            tenant_id=ctx.tenant_id,
+            workspace_id=ctx.workspace_id,
+            session_id=session_id,
+            expected_checkpoint_id=expected_cp_id,
+            operator_id=payload.operator_id,
+            operator_role=op_role,
+            action="EDIT_MEMORY",
+            memory_patch=tuple(payload.patches),
+            reason=payload.reason,
+        )
+
         new_checkpoint = await container.c2_state_manager.apply_memory_patch(
             ctx=ctx,
             command=command,
@@ -289,7 +385,7 @@ async def submit_tool_override(
             ctx=ctx,
             session_id=session_id,
             command=command,
-            details={"status_message": status_msg},
+            details={"status_message": status_msg, "tool_call_id": payload.tool_call_id},
         )
         await container.event_bus.publish(
             ctx,
@@ -311,3 +407,19 @@ async def submit_tool_override(
         }
     except (ValueError, AuthorizationError) as err:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
+
+
+@router.get("/{session_id}/audit-log", response_model=AuditLogResponse)
+async def get_session_audit_log(
+    session_id: uuid.UUID,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    container: Annotated[AppContainer, Depends(get_container)],
+) -> AuditLogResponse:
+    """Retrieve and cryptographically verify the SHA-256 hash-chained audit ledger."""
+    entries = await container.audit_store.get_session_audit_log(ctx, session_id)
+    verified = await container.audit_store.verify_session_chain(ctx, session_id)
+    return AuditLogResponse(
+        session_id=str(session_id),
+        chain_verified=verified,
+        entries=entries,
+    )
