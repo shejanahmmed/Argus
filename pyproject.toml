@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "argus-control-plane"
+version = "0.1.0"
+description = "Enterprise governance, observability, and Command & Control (C2) plane for autonomous AI agents."
+readme = "aboutArgus.md"
+requires-python = ">=3.11,<3.14"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "pydantic>=2.8.0,<3.0.0",
+    "uuid-utils>=0.9.0,<2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.0,<9.0.0",
+    "pytest-asyncio>=0.23.0,<1.0.0",
+    "mypy>=1.10.0,<2.0.0",
+    "ruff>=0.5.0,<1.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+argus = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+cache_dir = ".tmp/pytest_cache"
+addopts = "-ra -q"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+no_implicit_optional = true
+cache_dir = ".tmp/mypy_cache"
+mypy_path = "src"
+packages = ["argus", "tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+cache-dir = ".tmp/ruff_cache"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "SIM", "RUF"]
+ignore = []

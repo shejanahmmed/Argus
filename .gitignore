@@ -1,0 +1,32 @@
+# Workspace Hygiene (per AGENTS.md)
+.argus_logs/
+.tmp/
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+
+# Python Bytecode & Build Artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# Type Checking, Linting & Test Caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Frontend / Node Artifacts
+node_modules/
+dashboard/dist/
+
+# Secrets & Environment Variables
+.env
+.env.*
+!.env.example
