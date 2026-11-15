@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 from typing import Annotated, Any, Literal
 
@@ -25,6 +26,8 @@ from argus.core.schemas import (
     CheckpointRecord,
     JsonPatchOp,
     PendingToolCall,
+    ResolvedToolOverride,
+    SessionStatus,
     StatePreset,
     ToolOverrideSpec,
 )
@@ -66,7 +69,8 @@ class SubmitOverrideRequest(BaseModel):
     mock_output: dict[str, Any] | None = None
     rejection_reason: str | None = None
     operator_id: str
-    reason: str
+    reason: str = "Operator tool override decision"
+    auto_resume: bool = True
 
 
 class AuditLogResponse(BaseModel):
@@ -486,6 +490,22 @@ async def submit_tool_override(
             if matching_call in calls_legacy:
                 calls_legacy.remove(matching_call)
 
+        # Store resolved override record for agent worker / MCP client retrieval
+        resolved = ResolvedToolOverride(
+            session_id=session_id,
+            tool_call_id=payload.tool_call_id,
+            tool_name=matching_call.tool_name,
+            decision=payload.decision,
+            request_digest_sha256=matching_call.request_digest_sha256,
+            should_execute=should_exec,
+            effective_payload=res_payload,
+            status_message=status_msg,
+            operator_id=payload.operator_id,
+            resolved_at=utc_now(),
+        )
+        override_key = f"{ctx.tenant_id}:{session_id}:{payload.tool_call_id}"
+        container.resolved_overrides[override_key] = resolved
+
         await container.audit_ledger.record_intervention(
             ctx=ctx,
             session_id=session_id,
@@ -498,20 +518,77 @@ async def submit_tool_override(
             event={
                 "session_id": str(session_id),
                 "tool_call_id": payload.tool_call_id,
+                "tool_name": matching_call.tool_name,
                 "decision": payload.decision,
                 "status_message": status_msg,
                 "should_execute": should_exec,
+                "request_digest_sha256": matching_call.request_digest_sha256,
+                "effective_payload": res_payload,
             },
         )
+
+        # Atomic auto-resumption: if all pending calls are resolved, resume PAUSED_C2 -> RUNNING
+        auto_resumed = False
+        remaining = container.pending_tool_calls.get(key, [])
+        if payload.auto_resume and len(remaining) == 0:
+            with contextlib.suppress(Exception):
+                current_sess = await container.control_store.get_session(ctx, session_id)
+                if current_sess.status == SessionStatus.PAUSED_C2:
+                    await container.c2_state_manager.resume_session(ctx=ctx, session_id=session_id)
+                    container.loop_detector.reset_session(str(session_id), tenant_id=ctx.tenant_id)
+                    await container.audit_store.append_event(
+                        ctx,
+                        session_id=session_id,
+                        event_type="C2_AUTO_RESUME",
+                        payload={
+                            "operator_id": payload.operator_id,
+                            "trigger_tool_call_id": payload.tool_call_id,
+                            "reason": "All pending tool calls resolved; auto-resumed session",
+                        },
+                    )
+                    await container.event_bus.publish(
+                        ctx,
+                        channel="c2.state_changed",
+                        event={
+                            "session_id": str(session_id),
+                            "new_status": SessionStatus.RUNNING.value,
+                            "operator_id": payload.operator_id,
+                            "reason": "Auto-resumed after tool override",
+                        },
+                    )
+                    auto_resumed = True
+
         return {
             "status": "ok",
             "decision": payload.decision,
             "should_execute": should_exec,
             "effective_payload": res_payload,
             "message": status_msg,
+            "auto_resumed": auto_resumed,
         }
     except (ValueError, AuthorizationError) as err:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
+
+
+@router.get("/{session_id}/tool-override/{tool_call_id}", response_model=ResolvedToolOverride)
+async def get_resolved_tool_override(
+    session_id: uuid.UUID,
+    tool_call_id: str,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    container: Annotated[AppContainer, Depends(get_container)],
+) -> ResolvedToolOverride:
+    """Retrieve the resolved operator decision for an intercepted tool call."""
+    key = f"{ctx.tenant_id}:{session_id}:{tool_call_id}"
+    resolved = container.resolved_overrides.get(key)
+    if resolved is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"No resolved override found for tool call '{tool_call_id}' "
+                f"in session '{session_id}'."
+            ),
+        )
+    return resolved
 
 
 @router.get("/{session_id}/audit-log", response_model=AuditLogResponse)

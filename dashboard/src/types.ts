@@ -56,7 +56,22 @@ export interface PendingToolCall {
   tool_name: string;
   tool_args: Record<string, unknown>;
   is_destructive: boolean;
+  security_risk?: string | null;
   request_digest_sha256?: string;
+  created_at?: string;
+}
+
+export interface ResolvedToolOverride {
+  session_id: string;
+  tool_call_id: string;
+  tool_name: string;
+  decision: "approve" | "edit" | "mock" | "reject";
+  request_digest_sha256: string;
+  should_execute: boolean;
+  effective_payload: Record<string, unknown>;
+  status_message: string;
+  operator_id: string;
+  resolved_at: string;
 }
 
 export interface CheckpointRecord {

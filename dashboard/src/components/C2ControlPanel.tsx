@@ -199,10 +199,20 @@ export const C2ControlPanel: React.FC<C2ControlPanelProps> = ({
                   <div className="flex items-center justify-between pb-2 border-b border-zinc-800/80">
                     <div>
                       <div className="text-sm font-semibold text-white">{currentTool.tool_name}</div>
-                      <div className="text-xs text-rose-400 font-medium mt-0.5">Destructive Operation</div>
+                      {currentTool.is_destructive && (
+                        <div className="text-xs text-rose-400 font-medium mt-0.5">Destructive Operation</div>
+                      )}
+                      {currentTool.security_risk && (
+                        <div className="text-xs text-amber-400 font-medium mt-0.5">
+                          Security Threat: {currentTool.security_risk}
+                        </div>
+                      )}
                     </div>
-                    <span className="text-[11px] font-mono text-zinc-500">
-                      SHA: {currentTool.request_digest_sha256?.substring(0, 8)}...
+                    <span
+                      className="text-[11px] font-mono text-zinc-500 hover:text-zinc-300 transition-colors"
+                      title={currentTool.request_digest_sha256}
+                    >
+                      SHA: {currentTool.request_digest_sha256 ? currentTool.request_digest_sha256.substring(0, 10) : "N/A"}...
                     </span>
                   </div>
 

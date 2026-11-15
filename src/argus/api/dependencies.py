@@ -29,7 +29,7 @@ from argus.c2.state_manager import C2StateManager
 from argus.c2.tool_override import ToolOverrideEngine
 from argus.core.config import ArgusEnvironment, ArgusSettings
 from argus.core.errors import AuthorizationError
-from argus.core.schemas import PendingToolCall
+from argus.core.schemas import PendingToolCall, ResolvedToolOverride
 from argus.core.tenancy import Role, TenantContext
 from argus.governance.budget_guard import BudgetGuard
 from argus.governance.loop_detector import LoopDetector
@@ -61,8 +61,10 @@ class AppContainer:
         self._sqlite_engine: SqliteEngine | None = None
         self.authenticator = HmacTokenAuthenticator(settings=self.settings)
 
-        # In-memory tracking for pending intercepted tool calls: session_id -> list[PendingToolCall]
+        # Pending intercepted tool calls: tenant:session -> list[PendingToolCall]
         self.pending_tool_calls: dict[str, list[PendingToolCall]] = {}
+        # Resolved tool overrides: tenant:session:call_id -> ResolvedToolOverride
+        self.resolved_overrides: dict[str, ResolvedToolOverride] = {}
         # Recent correlated container logs ring buffer
         self.container_logs: list[CorrelatedContainerLog] = []
 
@@ -119,6 +121,7 @@ class AppContainer:
         """Reset internal stores to clean state for test isolation."""
         self._init_stores()
         self.pending_tool_calls.clear()
+        self.resolved_overrides.clear()
         self.container_logs.clear()
 
 

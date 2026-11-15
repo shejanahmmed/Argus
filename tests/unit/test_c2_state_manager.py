@@ -305,7 +305,70 @@ def test_tool_override_engine_decisions() -> None:
     assert should_exec_mock is False
     assert mock_payload["status"] == "approved"
 
-    # 3. Reject with digest mismatch must fail
+    # 3. Reject with matching digest succeeds
+    cmd_reject = C2OverrideCommand(
+        command_id=new_uuid7(),
+        tenant_id="tenant_a",
+        workspace_id="ws_1",
+        session_id=new_uuid7(),
+        expected_checkpoint_id=new_uuid7(),
+        operator_id="operator_1",
+        operator_role=Role.OPERATOR,
+        action="OVERRIDE_TOOL_CALL",
+        tool_override=ToolOverrideSpec(
+            decision="reject",
+            request_digest_sha256=digest,
+            rejection_reason="Blocked due to suspicious beneficiary",
+        ),
+        reason="Security block",
+    )
+    rej_payload, should_exec_rej, msg_rej = engine.process_override(ctx, cmd_reject, pending)
+    assert should_exec_rej is False
+    assert rej_payload["error"] == "TOOL_EXECUTION_REJECTED_BY_OPERATOR"
+    assert rej_payload["tool_call_id"] == "call_1"
+    assert "rejected" in msg_rej.lower()
+
+    # 4. Approve decision
+    cmd_approve = C2OverrideCommand(
+        command_id=new_uuid7(),
+        tenant_id="tenant_a",
+        workspace_id="ws_1",
+        session_id=new_uuid7(),
+        expected_checkpoint_id=new_uuid7(),
+        operator_id="operator_1",
+        operator_role=Role.OPERATOR,
+        action="OVERRIDE_TOOL_CALL",
+        tool_override=ToolOverrideSpec(
+            decision="approve",
+            request_digest_sha256=digest,
+        ),
+        reason="Verified legitimate transaction",
+    )
+    app_payload, should_exec_app, _ = engine.process_override(ctx, cmd_approve, pending)
+    assert should_exec_app is True
+    assert app_payload == pending.tool_args
+
+    # 5. Edit decision containing malicious injection must be blocked
+    cmd_edit_malicious = C2OverrideCommand(
+        command_id=new_uuid7(),
+        tenant_id="tenant_a",
+        workspace_id="ws_1",
+        session_id=new_uuid7(),
+        expected_checkpoint_id=new_uuid7(),
+        operator_id="operator_1",
+        operator_role=Role.OPERATOR,
+        action="OVERRIDE_TOOL_CALL",
+        tool_override=ToolOverrideSpec(
+            decision="edit",
+            request_digest_sha256=digest,
+            modified_args={"amount": 50, "note": "pay; rm -rf /"},
+        ),
+        reason="Attempted malicious override",
+    )
+    with pytest.raises(ValueError, match="Security threat detected"):
+        engine.process_override(ctx, cmd_edit_malicious, pending)
+
+    # 6. Reject with digest mismatch must fail
     cmd_mismatch = C2OverrideCommand(
         command_id=new_uuid7(),
         tenant_id="tenant_a",

@@ -370,6 +370,98 @@ async def test_c2_tool_override_cycle(auth_headers: dict[str, str]) -> None:
         )
         assert len(empty_resp.json()) == 0
 
+        # Query resolved tool override record
+        resolved_resp = await client.get(
+            f"/api/v1/c2/{session_id}/tool-override/call_x1",
+            headers=auth_headers,
+        )
+        assert resolved_resp.status_code == 200
+        resolved_data = resolved_resp.json()
+        assert resolved_data["tool_name"] == "drop_table"
+        assert resolved_data["decision"] == "edit"
+        assert resolved_data["should_execute"] is True
+        assert resolved_data["effective_payload"]["table"] == "test_sandbox"
+        assert resolved_data["operator_id"] == "op_admin"
+
+        # 4. Test auto-resumption when session is PAUSED_C2
+        sess_auto_id = new_uuid7()
+        sess_auto = AgentSession(
+            session_id=sess_auto_id,
+            tenant_id="test_tenant",
+            workspace_id="test_workspace",
+            workflow_id="wf_auto",
+            agent_name="auto_agent",
+            framework=AgentFramework.LANGGRAPH,
+            budget_cap_usd=10.0,
+            status=SessionStatus.PAUSED_C2,
+        )
+        auto_ctx = TenantContext(
+            tenant_id="test_tenant",
+            workspace_id="test_workspace",
+            actor_id="admin_user",
+            role=Role.ADMIN,
+        )
+        await get_container().control_store.create_session(auto_ctx, sess_auto)
+
+        call_auto = PendingToolCall(
+            tool_call_id="call_auto_99",
+            tool_name="purge_cache",
+            tool_args={"all": True},
+            is_destructive=True,
+        )
+        await client.post(
+            f"/api/v1/c2/{sess_auto_id}/pending-tools",
+            headers=auth_headers,
+            json=call_auto.model_dump(mode="json"),
+        )
+
+        # Submit approve with auto_resume=True
+        auto_resp = await client.post(
+            f"/api/v1/c2/{sess_auto_id}/tool-override",
+            headers=auth_headers,
+            json={
+                "tool_call_id": "call_auto_99",
+                "decision": "approve",
+                "operator_id": "op_admin",
+                "reason": "Approve and auto-resume",
+                "auto_resume": True,
+            },
+        )
+        assert auto_resp.status_code == 200
+        assert auto_resp.json()["auto_resumed"] is True
+
+        # Verify session is now RUNNING in control store
+        updated_auto_sess = await get_container().control_store.get_session(
+            auto_ctx, sess_auto_id
+        )
+        assert updated_auto_sess.status == SessionStatus.RUNNING
+
+        # 5. Test rejection of security exploits in modified_args
+        call_exploit = PendingToolCall(
+            tool_call_id="call_exploit_99",
+            tool_name="exec_task",
+            tool_args={"cmd": "ls"},
+            is_destructive=True,
+        )
+        await client.post(
+            f"/api/v1/c2/{session_id}/pending-tools",
+            headers=auth_headers,
+            json=call_exploit.model_dump(mode="json"),
+        )
+        bad_edit_resp = await client.post(
+            f"/api/v1/c2/{session_id}/tool-override",
+            headers=auth_headers,
+            json={
+                "tool_call_id": "call_exploit_99",
+                "decision": "edit",
+                "modified_args": {"cmd": "ls; rm -rf /"},
+                "operator_id": "op_admin",
+                "reason": "Accidental injection",
+            },
+        )
+        assert bad_edit_resp.status_code == 400
+        assert "security threat" in bad_edit_resp.json()["detail"].lower()
+
 
 @pytest.mark.asyncio
 async def test_attribution_and_benchmarks(auth_headers: dict[str, str]) -> None:

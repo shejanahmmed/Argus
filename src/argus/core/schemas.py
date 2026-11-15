@@ -320,6 +320,28 @@ class ToolOverrideSpec(BaseModel):
         return self
 
 
+class ResolvedToolOverride(BaseModel):
+    """Immutable record of an operator's override decision for an intercepted tool call."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    session_id: UUID7
+    tool_call_id: str = Field(min_length=1, max_length=128)
+    tool_name: str = Field(min_length=1, max_length=256)
+    decision: Literal["approve", "edit", "mock", "reject"]
+    request_digest_sha256: str = Field(min_length=64, max_length=64)
+    should_execute: bool
+    effective_payload: dict[str, Any] = Field(default_factory=dict)
+    status_message: str
+    operator_id: str = Field(min_length=1, max_length=128)
+    resolved_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("resolved_at")
+    @classmethod
+    def _validate_resolved_at(cls, v: datetime) -> datetime:
+        return _require_tz_aware(v, "resolved_at")
+
+
 class C2OverrideCommand(BaseModel):
     """Distributed Command & Control intervention payload issued by a human operator."""
 

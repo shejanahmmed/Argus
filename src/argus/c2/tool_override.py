@@ -10,6 +10,7 @@ from typing import Any
 
 from argus.core.schemas import C2OverrideCommand, PendingToolCall
 from argus.core.tenancy import TenantContext
+from argus.governance.security_scanner import scan_tool_arguments
 
 
 class ToolOverrideEngine:
@@ -50,6 +51,11 @@ class ToolOverrideEngine:
 
         if spec.decision == "edit":
             edited_args = spec.modified_args or {}
+            tripped, threat = scan_tool_arguments(edited_args)
+            if tripped:
+                raise ValueError(
+                    f"Security threat detected in operator modified arguments: {threat}"
+                )
             return (
                 edited_args,
                 True,
@@ -70,7 +76,11 @@ class ToolOverrideEngine:
         if spec.decision == "reject":
             reason = spec.rejection_reason or "Rejected by operator."
             return (
-                {"error": "TOOL_EXECUTION_REJECTED_BY_OPERATOR", "reason": reason},
+                {
+                    "error": "TOOL_EXECUTION_REJECTED_BY_OPERATOR",
+                    "tool_call_id": pending_call.tool_call_id,
+                    "reason": reason,
+                },
                 False,
                 f"Tool '{pending_call.tool_name}' rejected by operator: {reason}",
             )
