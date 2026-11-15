@@ -922,3 +922,33 @@ class OpenInferenceIngestRequest(BaseModel):
     agent_name: str = Field(default="external_agent", min_length=1, max_length=128)
     framework: AgentFramework = Field(default=AgentFramework.CUSTOM)
 
+
+class EventBusChannel(StrEnum):
+    """Standardized event bus channels for Argus real-time pub/sub."""
+
+    TELEMETRY_SPANS = "telemetry.spans"
+    TELEMETRY_SESSIONS = "telemetry.sessions"
+    TELEMETRY_CLOUDWATCH = "telemetry.cloudwatch"
+    GOVERNANCE_CIRCUIT_BREAKER = "governance.circuit_breaker"
+    C2_INTERVENTION_REQUIRED = "c2.intervention_required"
+    C2_STATE_CHANGED = "c2.state_changed"
+    C2_CHECKPOINT_CREATED = "c2.checkpoint_created"
+    C2_OVERRIDE_RESOLVED = "c2.override_resolved"
+    C2_LEASE_EXPIRED = "c2.lease_expired"
+    C2_DEAD_MAN_TRIGGERED = "c2.dead_man_switch_triggered"
+    WILDCARD = "*"
+
+
+class EventEnvelope(BaseModel):
+    """Standardized event message envelope delivered across the EventBus and WebSocket."""
+
+    model_config = ConfigDict(extra="allow", frozen=True)
+
+    event_id: UUID7
+    channel: str
+    tenant_id: str
+    workspace_id: str
+    timestamp: datetime
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+

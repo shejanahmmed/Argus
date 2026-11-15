@@ -236,3 +236,83 @@ async def test_sqlite_budget_and_audit_stores(
     assert total_all == 2
     assert len(all_paged) == 1
     assert all_paged[0].event_type == "C2_RESUME"
+
+
+def test_sqlite_engine_pragmas_and_wal_mode(tmp_path: Path) -> None:
+    db_file = tmp_path / "test_wal.db"
+    disk_engine = SqliteEngine(db_file)
+    try:
+        assert disk_engine.active_journal_mode == "wal"
+        cur = disk_engine.conn.execute("PRAGMA foreign_keys")
+        assert cur.fetchone()[0] == 1
+        cur = disk_engine.conn.execute("PRAGMA busy_timeout")
+        assert cur.fetchone()[0] == 5000
+    finally:
+        disk_engine.close()
+
+    mem_engine = SqliteEngine(":memory:")
+    try:
+        assert mem_engine.active_journal_mode == "memory"
+    finally:
+        mem_engine.close()
+
+
+def test_sqlite_engine_diagnostics_and_integrity(tmp_path: Path) -> None:
+    db_file = tmp_path / "test_diag.db"
+    engine = SqliteEngine(db_file)
+    try:
+        diag = engine.get_diagnostics()
+        assert diag["integrity_check"] == "ok"
+        assert diag["journal_mode"] == "wal"
+        assert diag["page_size"] > 0
+        assert diag["page_count"] > 0
+        assert diag["database_size_bytes"] > 0
+        assert "table_counts" in diag
+        assert diag["table_counts"]["sessions"] == 0
+        assert diag["table_counts"]["checkpoints"] == 0
+        assert diag["table_counts"]["spans"] == 0
+        assert diag["table_counts"]["budgets"] == 0
+        assert diag["table_counts"]["audit_entries"] == 0
+    finally:
+        engine.close()
+
+
+def test_sqlite_engine_wal_checkpoint(tmp_path: Path) -> None:
+    db_file = tmp_path / "test_checkpoint.db"
+    engine = SqliteEngine(db_file)
+    try:
+        busy, log_frames, checkpointed_frames = engine.checkpoint_wal("PASSIVE")
+        assert busy == 0
+        assert log_frames >= 0
+        assert checkpointed_frames >= 0
+
+        # TRUNCATE mode
+        busy, log_frames, _checkpointed = engine.checkpoint_wal("TRUNCATE")
+        assert busy == 0
+
+        with pytest.raises(ValueError, match="Invalid WAL checkpoint mode"):
+            engine.checkpoint_wal("INVALID_MODE")
+    finally:
+        engine.close()
+
+
+def test_production_migrations_ddl_syntax() -> None:
+    migration_file = (
+        Path(__file__).resolve().parents[2] / "src" / "argus" / "adapters_infra" / "migrations.sql"
+    )
+    assert migration_file.exists(), f"Migrations file {migration_file} must exist."
+    content = migration_file.read_text(encoding="utf-8")
+
+    # Verify PostgreSQL tables and indexes
+    assert "CREATE TABLE IF NOT EXISTS argus_sessions" in content
+    assert "CREATE TABLE IF NOT EXISTS argus_checkpoints" in content
+    assert "CREATE TABLE IF NOT EXISTS argus_audit_ledger" in content
+    assert "CREATE TABLE IF NOT EXISTS argus_budgets" in content
+    assert "CREATE TABLE IF NOT EXISTS argus_spans" in content
+    assert "varchar_pattern_ops" in content
+
+    # Verify ClickHouse schema
+    assert "CREATE DATABASE IF NOT EXISTS argus_telemetry" in content
+    assert "CREATE TABLE IF NOT EXISTS argus_telemetry.argus_spans" in content
+    assert "ENGINE = MergeTree()" in content
+    assert "ORDER BY (tenant_id, workspace_id, session_id, dotted_order)" in content

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -141,7 +142,7 @@ def create_app() -> FastAPI:
         return {"status": "HEALTHY", "service": "argus-control-plane", "version": "0.1.0"}
 
     @app.get("/readyz", tags=["System"])
-    async def readiness_check() -> JSONResponse:
+    async def readiness_check(diagnostics: bool = False) -> JSONResponse:
         """Readiness probe verifying internal control and telemetry stores."""
         app_container = get_container()
         stores_initialized = (
@@ -151,18 +152,30 @@ def create_app() -> FastAPI:
             and app_container.audit_store is not None
         )
         db_alive = True
+        diag_info: dict[str, Any] | None = None
         if app_container._sqlite_engine is not None:
             db_alive = app_container._sqlite_engine.ping()
+            if diagnostics:
+                diag_info = app_container._sqlite_engine.get_diagnostics()
+        elif diagnostics:
+            sessions = await app_container.control_store.list_all_sessions_fleet()
+            diag_info = {
+                "backend": "memory",
+                "sessions_count": len(sessions),
+            }
 
         is_ready = stores_initialized and db_alive
         status_code = status.HTTP_200_OK if is_ready else status.HTTP_503_SERVICE_UNAVAILABLE
+        content: dict[str, Any] = {
+            "status": "READY" if is_ready else "DEGRADED",
+            "service": "argus-control-plane",
+            "storage_backend": app_container.settings.storage_backend,
+        }
+        if diag_info is not None:
+            content["diagnostics"] = diag_info
         return JSONResponse(
             status_code=status_code,
-            content={
-                "status": "READY" if is_ready else "DEGRADED",
-                "service": "argus-control-plane",
-                "storage_backend": app_container.settings.storage_backend,
-            },
+            content=content,
         )
 
     @app.get("/metrics", response_class=PlainTextResponse, tags=["System"])

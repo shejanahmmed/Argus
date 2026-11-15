@@ -86,7 +86,9 @@ class AppContainer:
             self.budget_store = InMemoryBudgetStore()
             self.audit_store = InMemoryAuditStore()
 
-        self.event_bus: EventBus = InMemoryEventBus()
+        self.event_bus: EventBus = InMemoryEventBus(
+            max_queue_size=self.settings.event_bus_queue_max_size
+        )
         self.audit_ledger = C2AuditLedger(audit_store=self.audit_store)
         self.loop_detector = LoopDetector(
             window_size=self.settings.loop_window_size,

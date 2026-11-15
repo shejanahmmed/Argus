@@ -6,11 +6,13 @@ evaluate pre-execution MCP tool calls against the Argus Control Plane, and sync 
 
 from __future__ import annotations
 
+import json
 import uuid
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
 from typing import Any, cast
 
 import httpx
+import websockets
 
 from argus.c2.lease_manager import HeartbeatStatus, LeaseSummary
 from argus.core.schemas import (
@@ -485,4 +487,29 @@ class ArgusC2Client:
             payload["session_id"] = str(session_id)
         data = await self._request("POST", "/api/v1/telemetry/openinference", json_body=payload)
         return cast(dict[str, Any], data)
+
+    async def stream_events(
+        self,
+        channels: list[str] | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Connect to the Argus WebSocket gateway and yield real-time C2 and telemetry events."""
+        ws_base = self._base_url.replace("http://", "ws://").replace("https://", "wss://")
+        chan_param = ",".join(channels) if channels else "*"
+        url = (
+            f"{ws_base}/ws/v1/stream?tenant_id={self._ctx.tenant_id}"
+            f"&workspace_id={self._ctx.workspace_id}&channels={chan_param}"
+        )
+        if self._auth_token:
+            url += f"&token={self._auth_token}"
+
+        async with websockets.connect(url, additional_headers=self.headers) as ws:
+            async for raw_msg in ws:
+                if isinstance(raw_msg, str):
+                    try:
+                        data = json.loads(raw_msg)
+                        if isinstance(data, dict):
+                            yield data
+                    except Exception:
+                        continue
+
 

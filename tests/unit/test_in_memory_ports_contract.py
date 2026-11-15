@@ -217,3 +217,81 @@ async def test_audit_store_hash_chain_and_event_bus() -> None:
     await bus.publish(ctx, "c2_alerts", {"session_id": str(session_id), "state": "PAUSED_C2"})
     received = await anext(sub)
     assert received["state"] == "PAUSED_C2"
+
+
+async def test_event_bus_prefix_wildcard_routing() -> None:
+    bus = InMemoryEventBus()
+    ctx = TenantContext(tenant_id="tenant_x", workspace_id="ws_1", actor_id="op", role=Role.ADMIN)
+
+    # 1. Subscriber A listens on c2.*
+    sub_c2 = bus.subscribe(ctx, patterns=["c2.*"])
+    # 2. Subscriber B listens on telemetry.*
+    sub_telem = bus.subscribe(ctx, patterns=["telemetry.*"])
+    # 3. Subscriber C listens on global wildcard *
+    sub_all = bus.subscribe(ctx, channel="*")
+
+    assert bus.active_subscribers_count == 3
+
+    # Publish C2 event
+    await bus.publish(ctx, "c2.state_changed", {"session": "s1", "status": "PAUSED"})
+
+    msg_c2 = await anext(sub_c2)
+    assert msg_c2["channel"] == "c2.state_changed"
+    assert msg_c2["status"] == "PAUSED"
+    assert "event_id" in msg_c2
+
+    msg_all = await anext(sub_all)
+    assert msg_all["channel"] == "c2.state_changed"
+
+    # Publish Telemetry event
+    await bus.publish(ctx, "telemetry.spans", {"span_count": 5})
+
+    msg_telem = await anext(sub_telem)
+    assert msg_telem["channel"] == "telemetry.spans"
+    assert msg_telem["span_count"] == 5
+
+    msg_all_telem = await anext(sub_all)
+    assert msg_all_telem["channel"] == "telemetry.spans"
+
+
+async def test_event_bus_bounded_queue_drop_oldest() -> None:
+    bus = InMemoryEventBus(max_queue_size=3)
+    ctx = TenantContext(tenant_id="tenant_x", workspace_id="ws_1", actor_id="op", role=Role.ADMIN)
+
+    sub = bus.subscribe(ctx, channel="test.burst")
+
+    # Publish 5 events into a queue of size 3 without reading
+    for i in range(1, 6):
+        await bus.publish(ctx, "test.burst", {"seq": i})
+
+    # The first 2 events (seq 1 and 2) must have been dropped; 3, 4, 5 must remain
+    e3 = await anext(sub)
+    e4 = await anext(sub)
+    e5 = await anext(sub)
+
+    assert e3["seq"] == 3
+    assert e4["seq"] == 4
+    assert e5["seq"] == 5
+
+
+async def test_event_bus_tenant_isolation_and_diagnostics() -> None:
+    bus = InMemoryEventBus()
+    ctx_a = TenantContext(tenant_id="tenant_a", workspace_id="ws_1", actor_id="op", role=Role.ADMIN)
+    ctx_b = TenantContext(tenant_id="tenant_b", workspace_id="ws_1", actor_id="op", role=Role.ADMIN)
+
+    sub_a = bus.subscribe(ctx_a, channel="*")
+    sub_b = bus.subscribe(ctx_b, channel="*")
+
+    assert bus.active_subscribers_count == 2
+
+    # Publish to Tenant A
+    await bus.publish(ctx_a, "c2.event", {"target": "a_only"})
+
+    msg_a = await anext(sub_a)
+    assert msg_a["target"] == "a_only"
+
+    # Verify bus subscriber clean-up on generator cancellation
+    await sub_a.aclose()
+    assert bus.active_subscribers_count == 1
+    await sub_b.aclose()
+    assert bus.active_subscribers_count == 0

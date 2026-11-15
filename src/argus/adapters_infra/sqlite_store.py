@@ -108,8 +108,18 @@ class SqliteEngine:
         if self._db_path != ":memory:":
             Path(self._db_path).parent.mkdir(parents=True, exist_ok=True)
         self._lock = asyncio.Lock()
-        self._conn = sqlite3.connect(self._db_path, check_same_thread=False)
+        self._conn = sqlite3.connect(self._db_path, check_same_thread=False, timeout=10.0)
         self._conn.row_factory = sqlite3.Row
+
+        # Configure WAL pragmas, normal synchronous writes, foreign keys, and 5s busy timeout
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._conn.execute("PRAGMA foreign_keys=ON")
+        self._conn.execute("PRAGMA busy_timeout=5000")
+
+        row = self._conn.execute("PRAGMA journal_mode").fetchone()
+        self._active_journal_mode = str(row[0]).lower() if row else "unknown"
+
         self._conn.executescript(_SCHEMA_DDL)
         self._conn.commit()
 
@@ -121,6 +131,15 @@ class SqliteEngine:
     def conn(self) -> sqlite3.Connection:
         return self._conn
 
+    @property
+    def db_path(self) -> str:
+        return self._db_path
+
+    @property
+    def active_journal_mode(self) -> str:
+        """Active SQLite journal mode (e.g. 'wal' for disk files, 'memory' for in-memory)."""
+        return self._active_journal_mode
+
     def ping(self) -> bool:
         """Verify underlying SQLite database connection is responsive."""
         try:
@@ -128,6 +147,89 @@ class SqliteEngine:
             return True
         except Exception:
             return False
+
+    def checkpoint_wal(self, mode: str = "PASSIVE") -> tuple[int, int, int]:
+        """Flush WAL frames to main database file.
+
+        Args:
+            mode: Checkpoint mode ('PASSIVE', 'FULL', 'RESTART', or 'TRUNCATE').
+
+        Returns:
+            Tuple of (busy, log_frames, checkpointed_frames).
+        """
+        valid_modes = {"PASSIVE", "FULL", "RESTART", "TRUNCATE"}
+        target_mode = mode.upper()
+        if target_mode not in valid_modes:
+            raise ValueError(
+                f"Invalid WAL checkpoint mode '{mode}'. Must be one of {sorted(valid_modes)}"
+            )
+        cur = self._conn.execute(f"PRAGMA wal_checkpoint({target_mode})")
+        row = cur.fetchone()
+        if row is not None:
+            return (int(row[0]), int(row[1]), int(row[2]))
+        return (0, 0, 0)
+
+    def get_diagnostics(self) -> dict[str, Any]:
+        """Return diagnostic metrics including WAL status, page size, and table row counts."""
+        integrity_row = self._conn.execute("PRAGMA integrity_check(1)").fetchone()
+        integrity_status = str(integrity_row[0]) if integrity_row else "unknown"
+
+        journal_row = self._conn.execute("PRAGMA journal_mode").fetchone()
+        journal_mode = str(journal_row[0]).lower() if journal_row else self._active_journal_mode
+
+        page_size_row = self._conn.execute("PRAGMA page_size").fetchone()
+        page_size = int(page_size_row[0]) if page_size_row else 4096
+
+        page_count_row = self._conn.execute("PRAGMA page_count").fetchone()
+        page_count = int(page_count_row[0]) if page_count_row else 0
+
+        freelist_row = self._conn.execute("PRAGMA freelist_count").fetchone()
+        freelist_count = int(freelist_row[0]) if freelist_row else 0
+
+        file_size_bytes = 0
+        wal_size_bytes = 0
+        if self._db_path != ":memory:":
+            db_file = Path(self._db_path)
+            if db_file.exists():
+                file_size_bytes = db_file.stat().st_size
+            wal_file = Path(f"{self._db_path}-wal")
+            if wal_file.exists():
+                wal_size_bytes = wal_file.stat().st_size
+
+        # Table row counts
+        table_names = [
+            "argus_sessions",
+            "argus_checkpoints",
+            "argus_spans",
+            "argus_budgets",
+            "argus_audit_ledger",
+        ]
+        table_counts: dict[str, int] = {}
+        for table in table_names:
+            try:
+                cnt_row = self._conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
+                table_counts[table] = int(cnt_row[0]) if cnt_row else 0
+            except Exception:
+                table_counts[table] = 0
+
+        return {
+            "db_path": self._db_path,
+            "journal_mode": journal_mode,
+            "page_size": page_size,
+            "page_count": page_count,
+            "freelist_count": freelist_count,
+            "database_size_bytes": file_size_bytes,
+            "wal_size_bytes": wal_size_bytes,
+            "total_size_bytes": file_size_bytes + wal_size_bytes,
+            "integrity_check": integrity_status,
+            "table_counts": {
+                "sessions": table_counts.get("argus_sessions", 0),
+                "checkpoints": table_counts.get("argus_checkpoints", 0),
+                "spans": table_counts.get("argus_spans", 0),
+                "budgets": table_counts.get("argus_budgets", 0),
+                "audit_entries": table_counts.get("argus_audit_ledger", 0),
+            },
+        }
 
     def reset_tables(self) -> None:
         """Truncate all Argus tables for deterministic test resets."""

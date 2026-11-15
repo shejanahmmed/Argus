@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import uuid
 from collections import defaultdict
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import Sequence
 from typing import Any
 
 from argus.core.errors import (
@@ -14,7 +15,7 @@ from argus.core.errors import (
     EntityNotFoundError,
     InvalidStateTransitionError,
 )
-from argus.core.ids import new_uuid7
+from argus.core.ids import new_uuid7, utc_now
 from argus.core.schemas import (
     GENESIS_AUDIT_HASH,
     AgentSession,
@@ -363,13 +364,57 @@ class InMemoryAuditStore:
             return paged, total
 
 
-class InMemoryEventBus:
-    """Tenant-isolated async pub/sub event bus for C2 wakeups and live telemetry."""
+class _EventSubscription:
+    """Async iterator wrapping an EventBus subscription queue with reliable cleanup."""
 
-    def __init__(self) -> None:
-        self._subscribers: dict[tuple[str, str, str], set[asyncio.Queue[dict[str, Any]]]] = (
-            defaultdict(set)
-        )
+    def __init__(
+        self,
+        bus: InMemoryEventBus,
+        tenant_key: tuple[str, str],
+        queue: asyncio.Queue[dict[str, Any]],
+    ) -> None:
+        self._bus = bus
+        self._tenant_key = tenant_key
+        self._queue = queue
+        self._closed = False
+
+    def __aiter__(self) -> _EventSubscription:
+        return self
+
+    async def __anext__(self) -> dict[str, Any]:
+        if self._closed:
+            raise StopAsyncIteration
+        return await self._queue.get()
+
+    async def aclose(self) -> None:
+        if not self._closed:
+            self._closed = True
+            self._bus._deregister_queue(self._tenant_key, self._queue)
+
+
+class InMemoryEventBus:
+    """Tenant-isolated async pub/sub event bus with bounded backpressure and pattern routing."""
+
+    def __init__(self, max_queue_size: int = 1000) -> None:
+        self._max_queue_size = max_queue_size
+        self._subscribers: dict[
+            tuple[str, str], dict[asyncio.Queue[dict[str, Any]], set[str]]
+        ] = defaultdict(dict)
+
+    @property
+    def active_subscribers_count(self) -> int:
+        """Total active subscription queues across all tenants and workspaces."""
+        return sum(len(queues) for queues in self._subscribers.values())
+
+    @staticmethod
+    def _matches_channel(pattern: str, channel: str) -> bool:
+        """Determine if a published channel matches a subscribed pattern."""
+        if pattern in ("*", channel):
+            return True
+        if pattern.endswith(".*"):
+            prefix = pattern[:-2]
+            return channel == prefix or channel.startswith(f"{prefix}.")
+        return False
 
     async def publish(
         self,
@@ -377,33 +422,80 @@ class InMemoryEventBus:
         channel: str,
         event: dict[str, Any],
     ) -> None:
-        key = (ctx.tenant_id, ctx.workspace_id, channel)
-        for queue in list(self._subscribers.get(key, set())):
-            await queue.put(event)
+        """Publish a tenant-scoped event to all subscribers matching channel or wildcard."""
+        tenant_key = (ctx.tenant_id, ctx.workspace_id)
+        subscribers = self._subscribers.get(tenant_key)
+        if not subscribers:
+            return
 
-        if channel != "*":
-            wildcard_key = (ctx.tenant_id, ctx.workspace_id, "*")
-            wildcard_envelope = {"channel": channel, "event": event, **event}
-            for queue in list(self._subscribers.get(wildcard_key, set())):
-                await queue.put(wildcard_envelope)
+        envelope: dict[str, Any] = {
+            "event_id": str(new_uuid7()),
+            "channel": channel,
+            "tenant_id": ctx.tenant_id,
+            "workspace_id": ctx.workspace_id,
+            "timestamp": utc_now().isoformat(),
+            "payload": event,
+            **event,  # Retain top-level keys for backward compatibility
+        }
+
+        for queue, patterns in list(subscribers.items()):
+            if any(self._matches_channel(pat, channel) for pat in patterns):
+                # Bounded queue drop-oldest eviction policy
+                if queue.full():
+                    with contextlib.suppress(asyncio.QueueEmpty):
+                        queue.get_nowait()
+                with contextlib.suppress(asyncio.QueueFull):
+                    queue.put_nowait(envelope)
+
+    def _deregister_queue(
+        self,
+        tenant_key: tuple[str, str],
+        queue: asyncio.Queue[dict[str, Any]],
+    ) -> None:
+        if tenant_key in self._subscribers:
+            self._subscribers[tenant_key].pop(queue, None)
+            if not self._subscribers[tenant_key]:
+                del self._subscribers[tenant_key]
 
     def subscribe(
         self,
         ctx: TenantContext,
-        channel: str,
-    ) -> AsyncIterator[dict[str, Any]]:
-        # Register the subscriber queue eagerly upon calling subscribe() rather than inside
-        # the async generator body so events published before the first anext() are not lost.
-        key = (ctx.tenant_id, ctx.workspace_id, channel)
-        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-        self._subscribers[key].add(queue)
+        channel: str = "*",
+        patterns: Sequence[str] | None = None,
+        patterns_set: set[str] | None = None,
+    ) -> _EventSubscription:
+        """Yield live events matching the tenant-scoped channel or patterns."""
+        tenant_key = (ctx.tenant_id, ctx.workspace_id)
+        if patterns_set is not None:
+            active_patterns = patterns_set
+        elif patterns:
+            active_patterns = set(patterns)
+        else:
+            active_patterns = {channel}
 
-        async def _stream() -> AsyncIterator[dict[str, Any]]:
-            try:
-                while True:
-                    item = await queue.get()
-                    yield item
-            finally:
-                self._subscribers[key].discard(queue)
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=self._max_queue_size)
+        self._subscribers[tenant_key][queue] = active_patterns
 
-        return _stream()
+        return _EventSubscription(self, tenant_key, queue)
+
+    def add_subscription(
+        self,
+        ctx: TenantContext,
+        queue: asyncio.Queue[dict[str, Any]],
+        pattern: str,
+    ) -> None:
+        """Dynamically add a pattern subscription to an active subscriber queue."""
+        tenant_key = (ctx.tenant_id, ctx.workspace_id)
+        if tenant_key in self._subscribers and queue in self._subscribers[tenant_key]:
+            self._subscribers[tenant_key][queue].add(pattern)
+
+    def remove_subscription(
+        self,
+        ctx: TenantContext,
+        queue: asyncio.Queue[dict[str, Any]],
+        pattern: str,
+    ) -> None:
+        """Dynamically remove a pattern subscription from an active subscriber queue."""
+        tenant_key = (ctx.tenant_id, ctx.workspace_id)
+        if tenant_key in self._subscribers and queue in self._subscribers[tenant_key]:
+            self._subscribers[tenant_key][queue].discard(pattern)

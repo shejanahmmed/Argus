@@ -164,6 +164,18 @@ class ArgusSettings(BaseModel):
         le=10000,
         description="Maximum number of container logs retained in the in-memory ring buffer.",
     )
+    # Real-Time EventBus & WebSocket Gateway Settings
+    event_bus_queue_max_size: int = Field(
+        default=1000,
+        ge=10,
+        le=50000,
+        description="Maximum queued unconsumed events per subscriber before oldest eviction.",
+    )
+    websocket_ping_interval_seconds: float = Field(
+        default=30.0,
+        gt=1.0,
+        description="Interval in seconds for WebSocket gateway keepalive pinging.",
+    )
 
     @classmethod
     def from_env(cls) -> ArgusSettings:

@@ -233,6 +233,7 @@ export const App: React.FC = () => {
 
     let ws: WebSocket | null = null;
     let reconnectTimer: number | null = null;
+    let pingInterval: number | null = null;
 
     const connect = () => {
       try {
@@ -240,6 +241,11 @@ export const App: React.FC = () => {
 
         ws.onopen = () => {
           setWsConnected(true);
+          pingInterval = window.setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ action: "ping" }));
+            }
+          }, 25000);
         };
 
         ws.onmessage = (event) => {
@@ -268,15 +274,18 @@ export const App: React.FC = () => {
 
         ws.onclose = () => {
           setWsConnected(false);
+          if (pingInterval) clearInterval(pingInterval);
           reconnectTimer = window.setTimeout(connect, 3000);
         };
 
         ws.onerror = () => {
           setWsConnected(false);
+          if (pingInterval) clearInterval(pingInterval);
           ws?.close();
         };
       } catch {
         setWsConnected(false);
+        if (pingInterval) clearInterval(pingInterval);
         reconnectTimer = window.setTimeout(connect, 3000);
       }
     };
@@ -285,6 +294,7 @@ export const App: React.FC = () => {
 
     return () => {
       if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (pingInterval) clearInterval(pingInterval);
       ws?.close();
     };
   }, [fetchSessions, fetchSessionDetails, fetchCloudWatchLogs, selectedSessionId]);

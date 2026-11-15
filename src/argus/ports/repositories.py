@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import Sequence
 from typing import Any, Protocol, runtime_checkable
 
 from argus.core.schemas import (
@@ -188,6 +188,20 @@ class AuditStore(Protocol):
 
 
 @runtime_checkable
+class EventSubscription(Protocol):
+    """Protocol for an active async event subscription stream with clean closure."""
+
+    def __aiter__(self) -> EventSubscription:
+        ...
+
+    async def __anext__(self) -> dict[str, Any]:
+        ...
+
+    async def aclose(self) -> None:
+        ...
+
+
+@runtime_checkable
 class EventBus(Protocol):
     """Port for distributed C2 wakeup signaling and live WebSocket telemetry fan-out."""
 
@@ -203,7 +217,9 @@ class EventBus(Protocol):
     def subscribe(
         self,
         ctx: TenantContext,
-        channel: str,
-    ) -> AsyncIterator[dict[str, Any]]:
-        """Yield live events published to the tenant-scoped channel."""
+        channel: str = "*",
+        patterns: Sequence[str] | None = None,
+        patterns_set: set[str] | None = None,
+    ) -> EventSubscription:
+        """Yield live events published to the tenant-scoped channel or matching patterns."""
         ...

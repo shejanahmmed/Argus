@@ -58,35 +58,66 @@ CREATE TABLE IF NOT EXISTS argus_audit_ledger (
 CREATE INDEX IF NOT EXISTS idx_pg_audit_session
     ON argus_audit_ledger (tenant_id, workspace_id, session_id, seq_id ASC);
 
+CREATE TABLE IF NOT EXISTS argus_budgets (
+    tenant_id VARCHAR(128) NOT NULL,
+    workspace_id VARCHAR(128) NOT NULL,
+    session_id UUID NOT NULL REFERENCES argus_sessions(session_id) ON DELETE CASCADE,
+    accumulated_usd DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, workspace_id, session_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pg_budgets_session
+    ON argus_budgets (tenant_id, workspace_id, session_id);
+
+CREATE TABLE IF NOT EXISTS argus_spans (
+    span_id UUID PRIMARY KEY,
+    tenant_id VARCHAR(128) NOT NULL,
+    workspace_id VARCHAR(128) NOT NULL,
+    session_id UUID NOT NULL REFERENCES argus_sessions(session_id) ON DELETE CASCADE,
+    dotted_order VARCHAR(512) NOT NULL,
+    payload_json JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pg_spans_session_dotted
+    ON argus_spans (tenant_id, workspace_id, session_id, dotted_order ASC);
+
+CREATE INDEX IF NOT EXISTS idx_pg_spans_subtree
+    ON argus_spans (tenant_id, workspace_id, dotted_order varchar_pattern_ops);
+
 -- -----------------------------------------------------------------------------
 -- 2. ClickHouse 24 Columnar Telemetry Schema (Execute on ClickHouse node)
+-- Matches clickhouse service in docker-compose.yml (database: argus_telemetry)
 -- -----------------------------------------------------------------------------
--- CREATE TABLE IF NOT EXISTS argus_telemetry.argus_spans (
---     tenant_id LowCardinality(String),
---     workspace_id LowCardinality(String),
---     session_id UUID,
---     trace_id UUID,
---     span_id UUID,
---     parent_span_id Nullable(UUID),
---     dotted_order String,
---     name String,
---     span_kind LowCardinality(String),
---     operation_name LowCardinality(String),
---     framework LowCardinality(String),
---     model_name Nullable(String),
---     provider_name Nullable(String),
---     prompt_tokens UInt32,
---     completion_tokens UInt32,
---     cost_usd Float64,
---     ttft_ms Nullable(Float64),
---     latency_ms Float64,
---     input_payload String,
---     output_payload String,
---     state_diff String,
---     attributes String,
---     redacted UInt8,
---     started_at DateTime64(6, 'UTC'),
---     ended_at Nullable(DateTime64(6, 'UTC'))
--- ) ENGINE = MergeTree()
--- PARTITION BY toYYYYMM(started_at)
--- ORDER BY (tenant_id, workspace_id, session_id, dotted_order);
+CREATE DATABASE IF NOT EXISTS argus_telemetry;
+
+CREATE TABLE IF NOT EXISTS argus_telemetry.argus_spans (
+    tenant_id LowCardinality(String),
+    workspace_id LowCardinality(String),
+    session_id UUID,
+    trace_id UUID,
+    span_id UUID,
+    parent_span_id Nullable(UUID),
+    dotted_order String,
+    name String,
+    span_kind LowCardinality(String),
+    operation_name LowCardinality(String),
+    framework LowCardinality(String),
+    model_name Nullable(String),
+    provider_name Nullable(String),
+    prompt_tokens UInt32,
+    completion_tokens UInt32,
+    cost_usd Float64,
+    ttft_ms Nullable(Float64),
+    latency_ms Float64,
+    input_payload String,
+    output_payload String,
+    state_diff String,
+    attributes String,
+    redacted UInt8,
+    started_at DateTime64(6, 'UTC'),
+    ended_at Nullable(DateTime64(6, 'UTC'))
+) ENGINE = MergeTree()
+PARTITION BY toYYYYMM(started_at)
+ORDER BY (tenant_id, workspace_id, session_id, dotted_order);
