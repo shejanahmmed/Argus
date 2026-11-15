@@ -164,6 +164,10 @@ class InMemoryControlStore:
                 if session.tenant_id == ctx.tenant_id and session.workspace_id == ctx.workspace_id
             ]
 
+    async def list_all_sessions_fleet(self) -> list[AgentSession]:
+        async with self._lock:
+            return list(self._sessions.values())
+
     async def add_session_cost(
         self,
         ctx: TenantContext,

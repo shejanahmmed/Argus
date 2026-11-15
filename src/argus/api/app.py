@@ -11,6 +11,7 @@ from starlette.staticfiles import StaticFiles
 
 from argus.api.dependencies import get_container
 from argus.api.routes.attribution import router as attribution_router
+from argus.api.routes.auth import router as auth_router
 from argus.api.routes.c2 import router as c2_router
 from argus.api.routes.demo import router as demo_router
 from argus.api.routes.governance import router as governance_router
@@ -26,7 +27,6 @@ from argus.core.errors import (
     TenantIsolationError,
 )
 from argus.core.schemas import SessionStatus
-from argus.core.tenancy import Role, TenantContext
 
 
 def create_app() -> FastAPI:
@@ -41,9 +41,10 @@ def create_app() -> FastAPI:
     )
 
     # Permit frontend dashboard cross-origin requests
+    container = get_container()
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=list(container.settings.cors_origins),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -110,6 +111,7 @@ def create_app() -> FastAPI:
         )
 
     # Mount API routers
+    app.include_router(auth_router)
     app.include_router(telemetry_router)
     app.include_router(governance_router)
     app.include_router(c2_router)
@@ -139,31 +141,35 @@ def create_app() -> FastAPI:
         return {"status": "HEALTHY", "service": "argus-control-plane", "version": "0.1.0"}
 
     @app.get("/readyz", tags=["System"])
-    async def readiness_check() -> dict[str, str]:
+    async def readiness_check() -> JSONResponse:
         """Readiness probe verifying internal control and telemetry stores."""
-        container = get_container()
-        is_ready = (
-            container.trace_store is not None
-            and container.control_store is not None
-            and container.budget_store is not None
-            and container.audit_store is not None
+        app_container = get_container()
+        stores_initialized = (
+            app_container.trace_store is not None
+            and app_container.control_store is not None
+            and app_container.budget_store is not None
+            and app_container.audit_store is not None
         )
-        return {
-            "status": "READY" if is_ready else "DEGRADED",
-            "service": "argus-control-plane",
-        }
+        db_alive = True
+        if app_container._sqlite_engine is not None:
+            db_alive = app_container._sqlite_engine.ping()
+
+        is_ready = stores_initialized and db_alive
+        status_code = status.HTTP_200_OK if is_ready else status.HTTP_503_SERVICE_UNAVAILABLE
+        return JSONResponse(
+            status_code=status_code,
+            content={
+                "status": "READY" if is_ready else "DEGRADED",
+                "service": "argus-control-plane",
+                "storage_backend": app_container.settings.storage_backend,
+            },
+        )
 
     @app.get("/metrics", response_class=PlainTextResponse, tags=["System"])
     async def prometheus_metrics() -> str:
-        """Export operational telemetry in Prometheus text exposition format."""
-        container = get_container()
-        default_ctx = TenantContext(
-            tenant_id="default_tenant",
-            workspace_id="default_workspace",
-            actor_id="metrics_scraper",
-            role=Role.VIEWER,
-        )
-        sessions = await container.control_store.list_sessions(default_ctx)
+        """Export operational telemetry in Prometheus text exposition format across all tenants."""
+        app_container = get_container()
+        sessions = await app_container.control_store.list_all_sessions_fleet()
         running_count = sum(1 for s in sessions if s.status == SessionStatus.RUNNING)
         paused_count = sum(1 for s in sessions if s.status == SessionStatus.PAUSED_C2)
         tripped_count = sum(
@@ -172,7 +178,7 @@ def create_app() -> FastAPI:
             if s.status in (SessionStatus.TRIPPED_LOOP, SessionStatus.TRIPPED_BUDGET)
         )
         total_spend = sum(s.accumulated_cost_usd for s in sessions)
-        pending_tools = sum(len(calls) for calls in container.pending_tool_calls.values())
+        pending_tools = sum(len(calls) for calls in app_container.pending_tool_calls.values())
 
         lines = [
             "# HELP argus_sessions_total Total tracked autonomous agent sessions.",

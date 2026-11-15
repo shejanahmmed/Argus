@@ -120,6 +120,14 @@ class SqliteEngine:
     def conn(self) -> sqlite3.Connection:
         return self._conn
 
+    def ping(self) -> bool:
+        """Verify underlying SQLite database connection is responsive."""
+        try:
+            self._conn.execute("SELECT 1").fetchone()
+            return True
+        except Exception:
+            return False
+
     def reset_tables(self) -> None:
         """Truncate all Argus tables for deterministic test resets."""
         self._conn.executescript(
@@ -373,6 +381,14 @@ class SqliteControlStore:
                 WHERE tenant_id = ? AND workspace_id = ?
                 """,
                 (ctx.tenant_id, ctx.workspace_id),
+            )
+            rows = cur.fetchall()
+        return [AgentSession.model_validate_json(row["payload_json"]) for row in rows]
+
+    async def list_all_sessions_fleet(self) -> list[AgentSession]:
+        async with self._engine.lock:
+            cur = self._engine.conn.execute(
+                "SELECT payload_json FROM argus_sessions"
             )
             rows = cur.fetchall()
         return [AgentSession.model_validate_json(row["payload_json"]) for row in rows]

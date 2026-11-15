@@ -31,11 +31,13 @@ class ArgusC2Client:
         self,
         ctx: TenantContext,
         *,
+        auth_token: str | None = None,
         base_url: str = "http://localhost:8000",
         client: httpx.AsyncClient | None = None,
         timeout_seconds: float = 10.0,
     ) -> None:
         self._ctx = ctx
+        self._auth_token = auth_token
         self._base_url = base_url.rstrip("/")
         self._external_client = client
         self._timeout = timeout_seconds
@@ -43,12 +45,15 @@ class ArgusC2Client:
     @property
     def headers(self) -> dict[str, str]:
         """Standard multi-tenant RBAC headers for Argus Control Plane requests."""
-        return {
+        h = {
             "X-Tenant-ID": self._ctx.tenant_id,
             "X-Workspace-ID": self._ctx.workspace_id,
             "X-Actor-ID": self._ctx.actor_id,
             "X-Role": self._ctx.role.value,
         }
+        if self._auth_token:
+            h["Authorization"] = f"Bearer {self._auth_token}"
+        return h
 
     async def _request(
         self,

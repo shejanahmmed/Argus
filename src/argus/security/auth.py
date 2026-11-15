@@ -10,10 +10,10 @@ import base64
 import hashlib
 import hmac
 import json
-import os
 import time
 from urllib.parse import unquote
 
+from argus.core.config import ArgusSettings
 from argus.core.errors import AuthorizationError
 from argus.core.tenancy import Role, TenantContext
 
@@ -21,10 +21,19 @@ from argus.core.tenancy import Role, TenantContext
 class HmacTokenAuthenticator:
     """Zero-dependency HMAC-SHA256 signed bearer token issuer and verifier."""
 
-    def __init__(self, secret_key: str | None = None) -> None:
-        raw_secret = secret_key or os.environ.get(
-            "ARGUS_AUTH_SECRET", "argus-local-dev-hmac-secret-key-2026"
-        )
+    def __init__(
+        self,
+        secret_key: str | None = None,
+        *,
+        settings: ArgusSettings | None = None,
+    ) -> None:
+        if secret_key is not None:
+            raw_secret = secret_key
+        elif settings is not None:
+            raw_secret = settings.auth_secret
+        else:
+            raw_secret = ArgusSettings.from_env().auth_secret
+
         self._secret = raw_secret.encode("utf-8")
 
     def issue_token(

@@ -87,6 +87,10 @@ class ControlStore(Protocol):
         """List all active and historical sessions within the caller's tenant/workspace."""
         ...
 
+    async def list_all_sessions_fleet(self) -> list[AgentSession]:
+        """System-level method for telemetry scrapers to aggregate fleet status across tenants."""
+        ...
+
     async def add_session_cost(
         self,
         ctx: TenantContext,

@@ -5,9 +5,11 @@ from __future__ import annotations
 import asyncio
 import json
 
-from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
 
 from argus.api.dependencies import get_container
+from argus.core.config import ArgusEnvironment
+from argus.core.errors import AuthorizationError
 from argus.core.tenancy import Role, TenantContext
 
 router = APIRouter(prefix="/ws/v1", tags=["Stream"])
@@ -16,20 +18,39 @@ router = APIRouter(prefix="/ws/v1", tags=["Stream"])
 @router.websocket("/stream")
 async def websocket_stream(
     websocket: WebSocket,
-    tenant_id: str = Query(default="default_tenant"),
-    workspace_id: str = Query(default="default_workspace"),
+    token: str | None = Query(default=None),
+    tenant_id: str = Query(default="dev_tenant"),
+    workspace_id: str = Query(default="dev_workspace"),
     actor_id: str = Query(default="operator_ws"),
 ) -> None:
     """Real-time pub/sub stream delivering span ingestions, loop alerts, and C2 events."""
-    await websocket.accept()
     container = get_container()
+    ctx: TenantContext
 
-    ctx = TenantContext(
-        tenant_id=tenant_id,
-        workspace_id=workspace_id,
-        actor_id=actor_id,
-        role=Role.OPERATOR,
-    )
+    if token:
+        try:
+            ctx = container.authenticator.verify_token(token)
+        except AuthorizationError:
+            await websocket.close(
+                code=status.WS_1008_POLICY_VIOLATION,
+                reason="Invalid or expired bearer token",
+            )
+            return
+    elif container.settings.env in (ArgusEnvironment.DEVELOPMENT, ArgusEnvironment.TESTING):
+        ctx = TenantContext(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            actor_id=actor_id,
+            role=Role.OPERATOR,
+        )
+    else:
+        await websocket.close(
+            code=status.WS_1008_POLICY_VIOLATION,
+            reason="Authentication required: Provide token query parameter.",
+        )
+        return
+
+    await websocket.accept()
 
     # Initial connection acknowledgment
     await websocket.send_text(

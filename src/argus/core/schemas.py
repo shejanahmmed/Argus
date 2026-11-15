@@ -513,3 +513,29 @@ class AuditLogEntry(BaseModel):
             "created_at": self.created_at.isoformat(),
         }
         return compute_canonical_sha256(envelope) == self.entry_hash
+
+
+class IssueTokenRequest(BaseModel):
+    """Payload to request an HMAC Bearer token for an actor or agent worker."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: str = Field(min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_\-]+$")
+    workspace_id: str = Field(min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_\-]+$")
+    actor_id: str = Field(min_length=1, max_length=128)
+    role: Role = Field(default=Role.OPERATOR)
+    ttl_seconds: int = Field(default=86400, ge=60, le=31536000)
+
+
+class IssueTokenResponse(BaseModel):
+    """Cryptographic Bearer token issued for an actor."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    token: str
+    tenant_id: str
+    workspace_id: str
+    actor_id: str
+    role: Role
+    expires_at_epoch: int
+

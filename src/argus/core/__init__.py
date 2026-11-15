@@ -1,5 +1,6 @@
 """Core domain primitives, schemas, tenancy, and error types for Argus."""
 
+from argus.core.config import ArgusEnvironment, ArgusSettings
 from argus.core.errors import (
     ArgusError,
     AuditChainTamperError,
@@ -29,6 +30,8 @@ from argus.core.schemas import (
     CircuitBreakerAction,
     CircuitBreakerReason,
     CircuitBreakerVerdict,
+    IssueTokenRequest,
+    IssueTokenResponse,
     JsonPatchOp,
     OperationName,
     PendingToolCall,
@@ -46,7 +49,9 @@ __all__ = [
     "VALID_SESSION_TRANSITIONS",
     "AgentFramework",
     "AgentSession",
+    "ArgusEnvironment",
     "ArgusError",
+    "ArgusSettings",
     "ArgusSpan",
     "AuditChainTamperError",
     "AuditLogEntry",
@@ -60,6 +65,8 @@ __all__ = [
     "CircuitBreakerVerdict",
     "EntityNotFoundError",
     "InvalidStateTransitionError",
+    "IssueTokenRequest",
+    "IssueTokenResponse",
     "JsonPatchOp",
     "OperationName",
     "PendingToolCall",

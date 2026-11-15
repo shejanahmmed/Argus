@@ -13,12 +13,20 @@ class Role(StrEnum):
     """Enterprise RBAC roles for Argus Control Plane operations."""
 
     VIEWER = "VIEWER"
+    INGESTOR = "INGESTOR"
     OPERATOR = "OPERATOR"
     ADMIN = "ADMIN"
-    INGESTOR = "INGESTOR"
 
+
+ROLE_HIERARCHY: dict[Role, int] = {
+    Role.VIEWER: 1,
+    Role.INGESTOR: 2,
+    Role.OPERATOR: 3,
+    Role.ADMIN: 4,
+}
 
 _C2_MUTATION_ROLES: frozenset[Role] = frozenset({Role.OPERATOR, Role.ADMIN})
+_TOKEN_ISSUANCE_ROLES: frozenset[Role] = frozenset({Role.ADMIN})
 
 
 class TenantContext(BaseModel):
@@ -39,10 +47,30 @@ class TenantContext(BaseModel):
                 f"resource in ({resource_tenant_id}/{resource_workspace_id})."
             )
 
+    def has_role(self, min_role: Role) -> bool:
+        """Check whether actor meets or exceeds the required hierarchical role level."""
+        return ROLE_HIERARCHY.get(self.role, 0) >= ROLE_HIERARCHY.get(min_role, 0)
+
+    def assert_has_role(self, min_role: Role) -> None:
+        """Enforce minimum role requirement or raise AuthorizationError."""
+        if not self.has_role(min_role):
+            raise AuthorizationError(
+                f"Actor '{self.actor_id}' holds role '{self.role}', which lacks "
+                f"required minimum role '{min_role}'."
+            )
+
     def assert_can_mutate_c2(self) -> None:
         """Verify actor holds OPERATOR or ADMIN role before executing C2 interventions."""
         if self.role not in _C2_MUTATION_ROLES:
             raise AuthorizationError(
                 f"Actor '{self.actor_id}' with role '{self.role}' is not authorized "
                 "to execute Command & Control state mutations."
+            )
+
+    def assert_can_issue_tokens(self) -> None:
+        """Verify actor holds ADMIN role before generating security tokens."""
+        if self.role not in _TOKEN_ISSUANCE_ROLES:
+            raise AuthorizationError(
+                f"Actor '{self.actor_id}' with role '{self.role}' is not authorized "
+                "to issue authentication tokens. Admin privilege required."
             )

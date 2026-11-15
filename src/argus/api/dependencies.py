@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import os
 from typing import Annotated
 
-from fastapi import Header
+from fastapi import Header, HTTPException, status
 
 from argus.adapters_infra.in_memory import (
     InMemoryAuditStore,
@@ -28,6 +27,8 @@ from argus.c2.audit_ledger import C2AuditLedger
 from argus.c2.lease_manager import C2LeaseManager
 from argus.c2.state_manager import C2StateManager
 from argus.c2.tool_override import ToolOverrideEngine
+from argus.core.config import ArgusEnvironment, ArgusSettings
+from argus.core.errors import AuthorizationError
 from argus.core.schemas import PendingToolCall
 from argus.core.tenancy import Role, TenantContext
 from argus.governance.budget_guard import BudgetGuard
@@ -48,11 +49,17 @@ from argus.security.auth import HmacTokenAuthenticator, parse_w3c_baggage
 class AppContainer:
     """Singleton container managing operational state, stores, and engines."""
 
-    def __init__(self, backend: str | None = None, db_path: str | None = None) -> None:
-        self._backend = (backend or os.environ.get("ARGUS_STORAGE_BACKEND", "memory")).lower()
-        self._db_path = db_path or os.environ.get("ARGUS_DB_PATH", ".argus_logs/argus.db")
+    def __init__(
+        self,
+        settings: ArgusSettings | None = None,
+        backend: str | None = None,
+        db_path: str | None = None,
+    ) -> None:
+        self.settings = settings or ArgusSettings.from_env()
+        self._backend = (backend or self.settings.storage_backend).lower()
+        self._db_path = db_path or self.settings.db_path
         self._sqlite_engine: SqliteEngine | None = None
-        self.authenticator = HmacTokenAuthenticator()
+        self.authenticator = HmacTokenAuthenticator(settings=self.settings)
 
         # In-memory tracking for pending intercepted tool calls: session_id -> list[PendingToolCall]
         self.pending_tool_calls: dict[str, list[PendingToolCall]] = {}
@@ -122,24 +129,49 @@ def get_tenant_context(
     """Extract authenticated TenantContext from Bearer token, explicit headers, or W3C baggage."""
     if authorization and authorization.lower().startswith("bearer "):
         token = authorization[7:].strip()
-        return _container.authenticator.verify_token(token)
-
-    baggage_map = parse_w3c_baggage(baggage)
-    tenant_id = x_tenant_id or baggage_map.get("argus.tenant_id") or "default_tenant"
-    workspace_id = x_workspace_id or baggage_map.get("argus.workspace_id") or "default_workspace"
-    actor_id = x_actor_id or baggage_map.get("argus.actor_id") or "operator_admin"
-    raw_role = x_role or baggage_map.get("argus.role")
-
-    role_val = Role.ADMIN
-    if raw_role:
         try:
-            role_val = Role(raw_role.upper())
-        except ValueError:
-            role_val = Role.OPERATOR
+            return _container.authenticator.verify_token(token)
+        except AuthorizationError as err:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Invalid or expired Bearer token: {err}",
+                headers={"WWW-Authenticate": "Bearer"},
+            ) from err
 
-    return TenantContext(
-        tenant_id=tenant_id,
-        workspace_id=workspace_id,
-        actor_id=actor_id,
-        role=role_val,
+    settings = _container.settings
+    # In non-production tiers (development or testing), allow W3C baggage or dev fallbacks
+    if settings.env in (ArgusEnvironment.DEVELOPMENT, ArgusEnvironment.TESTING):
+        baggage_map = parse_w3c_baggage(baggage)
+        tenant_id = x_tenant_id or baggage_map.get("argus.tenant_id")
+        workspace_id = x_workspace_id or baggage_map.get("argus.workspace_id")
+        actor_id = x_actor_id or baggage_map.get("argus.actor_id") or "dev_actor"
+        raw_role = x_role or baggage_map.get("argus.role")
+
+        role_val = Role.ADMIN
+        if raw_role:
+            try:
+                role_val = Role(raw_role.upper())
+            except ValueError:
+                role_val = Role.OPERATOR
+
+        if tenant_id and workspace_id:
+            return TenantContext(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                actor_id=actor_id,
+                role=role_val,
+            )
+
+        if settings.allow_anonymous:
+            return TenantContext(
+                tenant_id="dev_tenant",
+                workspace_id="dev_workspace",
+                actor_id="dev_guest",
+                role=Role.ADMIN,
+            )
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Authentication required: Provide a valid Bearer token.",
+        headers={"WWW-Authenticate": "Bearer"},
     )

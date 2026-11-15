@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Header } from "./components/Header";
 import { FleetOverview } from "./components/FleetOverview";
 import { LangGraphVisualizer } from "./components/LangGraphVisualizer";
@@ -35,13 +35,51 @@ export const App: React.FC = () => {
   const [benchmarks, setBenchmarks] = useState<ModelBenchmarkEntry[]>([]);
   const [recommendations, setRecommendations] = useState<DowngradeRecommendation[]>([]);
   const [logs, setLogs] = useState<ContainerLog[]>([]);
-  const autoSeededRef = useRef<boolean>(false);
+
+  // Multi-tenant Security Context & Bearer Auth
+  const [tenantId, setTenantId] = useState<string>(
+    () => localStorage.getItem("argus_tenant_id") || "default_tenant"
+  );
+  const [workspaceId, setWorkspaceId] = useState<string>(
+    () => localStorage.getItem("argus_workspace_id") || "default_workspace"
+  );
+  const [authToken, setAuthToken] = useState<string>(
+    () => localStorage.getItem("argus_auth_token") || ""
+  );
+
+  const handleSaveAuthConfig = useCallback(
+    (newTenant: string, newWorkspace: string, newToken: string) => {
+      const validTenant = newTenant.trim() || "default_tenant";
+      const validWorkspace = newWorkspace.trim() || "default_workspace";
+      setTenantId(validTenant);
+      setWorkspaceId(validWorkspace);
+      setAuthToken(newToken);
+      localStorage.setItem("argus_tenant_id", validTenant);
+      localStorage.setItem("argus_workspace_id", validWorkspace);
+      localStorage.setItem("argus_auth_token", newToken);
+      setStatusMessage(`Updated context to ${validTenant} / ${validWorkspace}`);
+    },
+    []
+  );
+
+  const authFetch = useCallback(
+    async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const headers = new Headers(init?.headers);
+      if (authToken) {
+        headers.set("Authorization", `Bearer ${authToken}`);
+      }
+      headers.set("X-Tenant-ID", tenantId);
+      headers.set("X-Workspace-ID", workspaceId);
+      return fetch(input, { ...init, headers });
+    },
+    [authToken, tenantId, workspaceId]
+  );
 
   const selectedSession = sessions.find((s) => s.session_id === selectedSessionId) || null;
 
   const fetchCloudWatchLogs = useCallback(async () => {
     try {
-      const res = await fetch("/api/v1/telemetry/cloudwatch");
+      const res = await authFetch("/api/v1/telemetry/cloudwatch");
       if (res.ok) {
         const data: ContainerLog[] = await res.json();
         setLogs(data);
@@ -49,16 +87,16 @@ export const App: React.FC = () => {
     } catch {
       // Offline fallback
     }
-  }, []);
+  }, [authFetch]);
 
   const fetchBenchmarks = useCallback(async () => {
     try {
-      const res = await fetch("/api/v1/attribution/benchmarks/catalog");
+      const res = await authFetch("/api/v1/attribution/benchmarks/catalog");
       if (res.ok) {
         const data = await res.json();
         setBenchmarks(data);
       }
-      const recRes = await fetch("/api/v1/attribution/benchmarks/recommend", {
+      const recRes = await authFetch("/api/v1/attribution/benchmarks/recommend", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -73,17 +111,17 @@ export const App: React.FC = () => {
     } catch {
       // Offline fallback
     }
-  }, []);
+  }, [authFetch]);
 
   const fetchSessionDetails = useCallback(
     async (sessionId: string, assignedValue: number = businessValueUsd) => {
       try {
         const [spansRes, toolsRes, cpRes, auditRes, roiRes] = await Promise.all([
-          fetch(`/api/v1/telemetry/sessions/${sessionId}/spans`),
-          fetch(`/api/v1/c2/${sessionId}/pending-tools`),
-          fetch(`/api/v1/c2/${sessionId}/checkpoints/latest`),
-          fetch(`/api/v1/c2/${sessionId}/audit-log`),
-          fetch(
+          authFetch(`/api/v1/telemetry/sessions/${sessionId}/spans`),
+          authFetch(`/api/v1/c2/${sessionId}/pending-tools`),
+          authFetch(`/api/v1/c2/${sessionId}/checkpoints/latest`),
+          authFetch(`/api/v1/c2/${sessionId}/audit-log`),
+          authFetch(
             `/api/v1/attribution/roi/${sessionId}?assigned_business_value_usd=${assignedValue}`
           ),
         ]);
@@ -113,17 +151,17 @@ export const App: React.FC = () => {
         // Offline fallback
       }
     },
-    [businessValueUsd]
+    [authFetch, businessValueUsd]
   );
 
   const handleSeedScenario = useCallback(async () => {
     setSeeding(true);
     setStatusMessage("Seeding multi-agent scenario...");
     try {
-      const res = await fetch("/api/v1/demo/seed", { method: "POST" });
+      const res = await authFetch("/api/v1/demo/seed", { method: "POST" });
       if (res.ok) {
         const data = await res.json();
-        const sessRes = await fetch("/api/v1/telemetry/sessions");
+        const sessRes = await authFetch("/api/v1/telemetry/sessions");
         if (sessRes.ok) {
           const sessList: AgentSession[] = await sessRes.json();
           setSessions(sessList);
@@ -141,18 +179,13 @@ export const App: React.FC = () => {
     } finally {
       setSeeding(false);
     }
-  }, [fetchCloudWatchLogs, fetchSessionDetails]);
+  }, [authFetch, fetchCloudWatchLogs, fetchSessionDetails]);
 
   const fetchSessions = useCallback(async () => {
     try {
-      const res = await fetch("/api/v1/telemetry/sessions");
+      const res = await authFetch("/api/v1/telemetry/sessions");
       if (res.ok) {
         const data: AgentSession[] = await res.json();
-        if (data.length === 0 && !autoSeededRef.current) {
-          autoSeededRef.current = true;
-          await handleSeedScenario();
-          return;
-        }
         setSessions(data);
         if (data.length > 0 && !selectedSessionId) {
           setSelectedSessionId(data[0].session_id);
@@ -161,7 +194,7 @@ export const App: React.FC = () => {
     } catch {
       // Offline fallback
     }
-  }, [selectedSessionId, handleSeedScenario]);
+  }, [authFetch, selectedSessionId]);
 
   useEffect(() => {
     fetchSessions();
@@ -178,7 +211,10 @@ export const App: React.FC = () => {
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = window.location.host;
-    const wsUrl = `${protocol}//${host}/ws/v1/stream?tenant_id=default_tenant&workspace_id=default_workspace`;
+    const tokenParam = authToken ? `&token=${encodeURIComponent(authToken)}` : "";
+    const wsUrl = `${protocol}//${host}/ws/v1/stream?tenant_id=${encodeURIComponent(
+      tenantId
+    )}&workspace_id=${encodeURIComponent(workspaceId)}${tokenParam}`;
 
     let ws: WebSocket | null = null;
     let reconnectTimer: number | null = null;
@@ -238,7 +274,7 @@ export const App: React.FC = () => {
 
   const handleSimulateLoopStep = async () => {
     if (!selectedSessionId) return;
-    const res = await fetch(
+    const res = await authFetch(
       `/api/v1/telemetry/otlp?default_session_id=${selectedSessionId}`,
       {
         method: "POST",
@@ -284,7 +320,7 @@ export const App: React.FC = () => {
   const handleSimulateMcpAttack = async () => {
     if (!selectedSessionId) return;
     const callId = `mcp_${Math.random().toString(36).substring(2, 8)}`;
-    const res = await fetch("/api/v1/governance/mcp/intercept", {
+    const res = await authFetch("/api/v1/governance/mcp/intercept", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -310,7 +346,7 @@ export const App: React.FC = () => {
   };
 
   const handlePause = async (sessionId: string) => {
-    const res = await fetch(`/api/v1/c2/${sessionId}/pause`, {
+    const res = await authFetch(`/api/v1/c2/${sessionId}/pause`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -326,7 +362,7 @@ export const App: React.FC = () => {
   };
 
   const handleResume = async (sessionId: string) => {
-    const res = await fetch(`/api/v1/c2/${sessionId}/resume`, {
+    const res = await authFetch(`/api/v1/c2/${sessionId}/resume`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -342,7 +378,7 @@ export const App: React.FC = () => {
   };
 
   const handleTerminate = async (sessionId: string) => {
-    const res = await fetch(`/api/v1/c2/${sessionId}/terminate`, {
+    const res = await authFetch(`/api/v1/c2/${sessionId}/terminate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -359,7 +395,7 @@ export const App: React.FC = () => {
 
   const handleApproveTool = async (toolCallId: string) => {
     if (!selectedSessionId) return;
-    const res = await fetch(`/api/v1/c2/${selectedSessionId}/tool-override`, {
+    const res = await authFetch(`/api/v1/c2/${selectedSessionId}/tool-override`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -380,7 +416,7 @@ export const App: React.FC = () => {
     modifiedArgs: Record<string, unknown>
   ) => {
     if (!selectedSessionId) return;
-    const res = await fetch(`/api/v1/c2/${selectedSessionId}/tool-override`, {
+    const res = await authFetch(`/api/v1/c2/${selectedSessionId}/tool-override`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -402,7 +438,7 @@ export const App: React.FC = () => {
     mockOutput: Record<string, unknown>
   ) => {
     if (!selectedSessionId) return;
-    const res = await fetch(`/api/v1/c2/${selectedSessionId}/tool-override`, {
+    const res = await authFetch(`/api/v1/c2/${selectedSessionId}/tool-override`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -421,7 +457,7 @@ export const App: React.FC = () => {
 
   const handleRejectTool = async (toolCallId: string, reason: string) => {
     if (!selectedSessionId) return;
-    const res = await fetch(`/api/v1/c2/${selectedSessionId}/tool-override`, {
+    const res = await authFetch(`/api/v1/c2/${selectedSessionId}/tool-override`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -447,7 +483,7 @@ export const App: React.FC = () => {
         sessions.find((s) => s.session_id === selectedSessionId)?.latest_checkpoint_id ??
         null;
 
-      const res = await fetch(`/api/v1/c2/${selectedSessionId}/patch`, {
+      const res = await authFetch(`/api/v1/c2/${selectedSessionId}/patch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -486,6 +522,10 @@ export const App: React.FC = () => {
         onSimulateMcpAttack={handleSimulateMcpAttack}
         seeding={seeding}
         hasSelectedSession={Boolean(selectedSessionId)}
+        tenantId={tenantId}
+        workspaceId={workspaceId}
+        authToken={authToken}
+        onSaveAuthConfig={handleSaveAuthConfig}
       />
 
       <main className="flex-1 p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-[1920px] w-full mx-auto">

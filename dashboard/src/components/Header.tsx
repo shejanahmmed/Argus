@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Shield,
   Play,
@@ -9,6 +9,9 @@ import {
   SlidersHorizontal,
   CircleDollarSign,
   CheckCircle2,
+  Key,
+  X,
+  Lock,
 } from "lucide-react";
 import { AgentSession, ViewMode } from "../types";
 
@@ -23,6 +26,10 @@ interface HeaderProps {
   onSimulateMcpAttack: () => void;
   seeding: boolean;
   hasSelectedSession: boolean;
+  tenantId: string;
+  workspaceId: string;
+  authToken: string;
+  onSaveAuthConfig: (tenant: string, workspace: string, token: string) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -36,13 +43,34 @@ export const Header: React.FC<HeaderProps> = ({
   onSimulateMcpAttack,
   seeding,
   hasSelectedSession,
+  tenantId,
+  workspaceId,
+  authToken,
+  onSaveAuthConfig,
 }) => {
+  const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
+  const [modalTenant, setModalTenant] = useState<string>(tenantId);
+  const [modalWorkspace, setModalWorkspace] = useState<string>(workspaceId);
+  const [modalToken, setModalToken] = useState<string>(authToken);
+
   const activeCount = sessions.filter((s) => s.status === "RUNNING").length;
   const pausedCount = sessions.filter((s) => s.status === "PAUSED_C2").length;
   const trippedCount = sessions.filter(
     (s) => s.status === "TRIPPED_LOOP" || s.status === "TRIPPED_BUDGET"
   ).length;
   const totalCost = sessions.reduce((acc, s) => acc + s.accumulated_cost_usd, 0);
+
+  const handleOpenAuth = () => {
+    setModalTenant(tenantId);
+    setModalWorkspace(workspaceId);
+    setModalToken(authToken);
+    setShowAuthModal(true);
+  };
+
+  const handleSaveAuth = () => {
+    onSaveAuthConfig(modalTenant.trim(), modalWorkspace.trim(), modalToken.trim());
+    setShowAuthModal(false);
+  };
 
   const navTabs: Array<{ id: ViewMode; label: string; icon: React.ReactNode }> = [
     { id: "ALL", label: "Overview", icon: <Layers className="h-4 w-4" /> },
@@ -55,7 +83,7 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="border-b border-zinc-800 bg-[#09090b] sticky top-0 z-30">
       {/* Top Navbar */}
       <div className="max-w-[1920px] mx-auto px-6 py-3 flex flex-wrap items-center justify-between gap-4 border-b border-zinc-800/60">
-        {/* Brand & Workspace */}
+        {/* Brand & Workspace Context */}
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-md bg-zinc-800 border border-zinc-700 text-zinc-100 shadow-sm">
             <Shield className="h-4 w-4 text-emerald-400" />
@@ -64,9 +92,20 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="text-sm font-semibold tracking-tight text-white">Argus</span>
             <span className="text-zinc-600 text-xs">/</span>
             <span className="text-xs text-zinc-400">AgentOps & C2</span>
-            <span className="ml-2 rounded-full bg-zinc-800 px-2 py-0.5 text-[11px] font-medium text-zinc-300 border border-zinc-700">
-              default-workspace
-            </span>
+            <button
+              onClick={handleOpenAuth}
+              title="Click to configure Tenant ID, Workspace ID, and Bearer Token"
+              className="ml-2 flex items-center gap-1.5 rounded-full bg-zinc-900 hover:bg-zinc-800 px-2.5 py-0.5 text-[11px] font-medium text-zinc-300 border border-zinc-700/80 transition-colors cursor-pointer"
+            >
+              <span className="font-mono text-zinc-400">{tenantId}</span>
+              <span className="text-zinc-600">/</span>
+              <span className="font-mono text-white">{workspaceId}</span>
+              {authToken ? (
+                <Lock className="h-3 w-3 text-emerald-400 ml-0.5" />
+              ) : (
+                <Key className="h-3 w-3 text-zinc-500 ml-0.5" />
+              )}
+            </button>
           </div>
         </div>
 
@@ -177,6 +216,101 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Tenant Context & Security Token Modal */}
+      {showAuthModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4">
+          <div className="w-full max-w-md rounded-xl border border-zinc-800 bg-[#09090b] p-6 shadow-2xl">
+            <div className="flex items-center justify-between pb-4 border-b border-zinc-800">
+              <div className="flex items-center gap-2">
+                <Lock className="h-4 w-4 text-emerald-400" />
+                <h3 className="text-sm font-semibold text-white">Tenant & Security Context</h3>
+              </div>
+              <button
+                onClick={() => setShowAuthModal(false)}
+                className="rounded-md p-1 text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="py-4 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-zinc-300 mb-1.5">
+                  Tenant Identifier
+                </label>
+                <input
+                  type="text"
+                  value={modalTenant}
+                  onChange={(e) => setModalTenant(e.target.value)}
+                  placeholder="e.g. acme-corp"
+                  className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:border-emerald-500 focus:outline-hidden"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-zinc-300 mb-1.5">
+                  Workspace Identifier
+                </label>
+                <input
+                  type="text"
+                  value={modalWorkspace}
+                  onChange={(e) => setModalWorkspace(e.target.value)}
+                  placeholder="e.g. prod-eu"
+                  className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:border-emerald-500 focus:outline-hidden"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-zinc-300 mb-1.5">
+                  Argus HMAC Bearer Token
+                </label>
+                <textarea
+                  rows={3}
+                  value={modalToken}
+                  onChange={(e) => setModalToken(e.target.value)}
+                  placeholder="argus_tok.eyJhY3Rvcl9pZCI6... (Optional in dev, required in production)"
+                  className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 font-mono text-[11px] text-zinc-200 placeholder-zinc-600 focus:border-emerald-500 focus:outline-hidden resize-none"
+                />
+                <p className="mt-1 text-[10px] text-zinc-500">
+                  Generate tokens via CLI:{" "}
+                  <code className="text-zinc-400">python -m argus auth issue-token --tenant ...</code>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-4 border-t border-zinc-800">
+              {modalToken ? (
+                <button
+                  type="button"
+                  onClick={() => setModalToken("")}
+                  className="text-xs text-rose-400 hover:text-rose-300 underline cursor-pointer"
+                >
+                  Clear Token
+                </button>
+              ) : (
+                <div />
+              )}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAuthModal(false)}
+                  className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-800 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveAuth}
+                  className="rounded-md bg-white hover:bg-zinc-200 text-zinc-950 px-3 py-1.5 text-xs font-semibold shadow-sm transition-all cursor-pointer"
+                >
+                  Save & Apply
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 };

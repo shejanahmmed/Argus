@@ -27,6 +27,9 @@ node_modules/
 dashboard/dist/
 *.tsbuildinfo
 
+# Internal Project Documentation
+FEATURES.md
+
 # Secrets & Environment Variables
 .env
 .env.*
