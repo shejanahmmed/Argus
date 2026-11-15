@@ -18,6 +18,7 @@ from argus.core.schemas import (
     AgentSession,
     ArgusSpan,
     AuditLogEntry,
+    AuditViolationType,
     C2OverrideCommand,
     JsonPatchOp,
     OperationName,
@@ -253,3 +254,72 @@ def test_audit_log_entry_tamper_detection() -> None:
     )
     assert entry2.verify_integrity(entry1.entry_hash)
     assert not entry2.verify_integrity("f" * 64)
+
+
+def test_audit_chain_detailed_diagnostics_and_violations() -> None:
+    session_id = new_uuid7()
+    entry1 = AuditLogEntry.create_linked(
+        audit_id=new_uuid7(),
+        tenant_id="tenant_diag",
+        workspace_id="ws_diag",
+        session_id=session_id,
+        actor_id="admin_1",
+        actor_role=Role.ADMIN,
+        event_type="C2_PAUSE",
+        payload={"reason": "Audit review"},
+    )
+    # Valid genesis block
+    valid, v_type, details = entry1.check_integrity_detailed(entry1.prev_entry_hash)
+    assert valid is True
+    assert v_type is None
+    assert details is None
+
+    # Test CHAIN_LINK_BROKEN on bad predecessor
+    valid_bad_prev, v_bad_prev, details_bad = entry1.check_integrity_detailed("a" * 64)
+    assert valid_bad_prev is False
+    assert v_bad_prev == AuditViolationType.CHAIN_LINK_BROKEN
+    assert "Chain link broken" in (details_bad or "")
+
+    # Test PAYLOAD_DIGEST_MISMATCH: create entry with modified payload dict
+    tampered_payload_entry = AuditLogEntry(
+        audit_id=entry1.audit_id,
+        tenant_id=entry1.tenant_id,
+        workspace_id=entry1.workspace_id,
+        session_id=entry1.session_id,
+        actor_id=entry1.actor_id,
+        actor_role=entry1.actor_role,
+        event_type=entry1.event_type,
+        payload={"reason": "TAMPERED_BY_ATTACKER"},
+        payload_sha256=entry1.payload_sha256,
+        prev_entry_hash=entry1.prev_entry_hash,
+        entry_hash=entry1.entry_hash,
+        created_at=entry1.created_at,
+    )
+    valid_pay, v_pay, details_pay = tampered_payload_entry.check_integrity_detailed(
+        entry1.prev_entry_hash
+    )
+    assert valid_pay is False
+    assert v_pay == AuditViolationType.PAYLOAD_DIGEST_MISMATCH
+    assert "Payload altered" in (details_pay or "")
+
+    # Test ENVELOPE_DIGEST_MISMATCH: modify event_type while keeping hashes intact
+    tampered_env_entry = AuditLogEntry(
+        audit_id=entry1.audit_id,
+        tenant_id=entry1.tenant_id,
+        workspace_id=entry1.workspace_id,
+        session_id=entry1.session_id,
+        actor_id="impersonated_actor",
+        actor_role=entry1.actor_role,
+        event_type=entry1.event_type,
+        payload=entry1.payload,
+        payload_sha256=entry1.payload_sha256,
+        prev_entry_hash=entry1.prev_entry_hash,
+        entry_hash=entry1.entry_hash,
+        created_at=entry1.created_at,
+    )
+    valid_env, v_env, details_env = tampered_env_entry.check_integrity_detailed(
+        entry1.prev_entry_hash
+    )
+    assert valid_env is False
+    assert v_env == AuditViolationType.ENVELOPE_DIGEST_MISMATCH
+    assert "Envelope altered" in (details_env or "")

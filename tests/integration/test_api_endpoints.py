@@ -1209,3 +1209,90 @@ async def test_c2_presets_and_timeline_endpoints(auth_headers: dict[str, str]) -
         assert "test" in r_bad_patch.json()["detail"].lower()
 
 
+@pytest.mark.asyncio
+async def test_audit_ledger_verification_and_export_lifecycle(
+    auth_headers: dict[str, str],
+) -> None:
+    session_id = new_uuid7()
+    ctx = TenantContext(
+        tenant_id=auth_headers["X-Tenant-ID"],
+        workspace_id=auth_headers["X-Workspace-ID"],
+        actor_id=auth_headers["X-Actor-ID"],
+        role=Role(auth_headers["X-Role"]),
+    )
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        sdk = ArgusC2Client(ctx, client=client)
+
+        # 1. Register session
+        await sdk.register_session(
+            session_id=session_id,
+            workflow_id="wf_audit_test",
+            agent_name="audit_agent",
+            framework=AgentFramework.LANGGRAPH,
+        )
+
+        # 2. Perform operator interventions to generate audit entries
+        r_pause = await client.post(
+            f"/api/v1/c2/{session_id}/pause",
+            headers=auth_headers,
+            json={"operator_id": "admin_user", "reason": "Manual review pause"},
+        )
+        assert r_pause.status_code == 200
+
+        r_resume = await client.post(
+            f"/api/v1/c2/{session_id}/resume",
+            headers=auth_headers,
+            json={"operator_id": "admin_user", "reason": "Manual review resume"},
+        )
+        assert r_resume.status_code == 200
+
+        # 3. Retrieve audit log via SDK
+        log_resp = await sdk.get_audit_log(session_id)
+        assert log_resp.chain_verified is True
+        assert len(log_resp.entries) == 2
+        assert log_resp.verification_report is not None
+        assert log_resp.verification_report.is_valid is True
+        assert log_resp.verification_report.total_entries == 2
+
+        # 4. Dedicated verification attestation endpoint via SDK
+        verify_report = await sdk.verify_audit_log(session_id)
+        assert verify_report.is_valid is True
+        assert verify_report.total_entries == 2
+        assert verify_report.tip_hash == log_resp.entries[-1].entry_hash
+        assert verify_report.violation_type is None
+
+        # 5. Export in JSON, JSONL, and CSV formats
+        r_json = await client.get(
+            f"/api/v1/c2/{session_id}/audit-log/export?format=json",
+            headers=auth_headers,
+        )
+        assert r_json.status_code == 200
+        assert r_json.headers["content-type"] == "application/json"
+        assert f'filename="audit_{session_id}.json"' in r_json.headers["content-disposition"]
+        assert len(r_json.json()) == 2
+
+        r_jsonl = await client.get(
+            f"/api/v1/c2/{session_id}/audit-log/export?format=jsonl",
+            headers=auth_headers,
+        )
+        assert r_jsonl.status_code == 200
+        lines = [ln for ln in r_jsonl.text.strip().split("\n") if ln.strip()]
+        assert len(lines) == 2
+
+        r_csv = await client.get(
+            f"/api/v1/c2/{session_id}/audit-log/export?format=csv",
+            headers=auth_headers,
+        )
+        assert r_csv.status_code == 200
+        assert "audit_id,created_at,event_type" in r_csv.text
+
+        # 6. Query audit log with filters via SDK
+        query_res = await sdk.query_audit_entries(session_id=session_id, event_type="C2_PAUSE")
+        assert query_res.total_count == 1
+        assert len(query_res.entries) == 1
+        assert query_res.entries[0].event_type == "C2_PAUSE"
+
+

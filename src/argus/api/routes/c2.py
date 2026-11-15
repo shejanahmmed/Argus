@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import contextlib
+import csv
+import io
+import json
 import uuid
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 
 from argus.api.dependencies import AppContainer, get_container, get_tenant_context
@@ -21,7 +24,9 @@ from argus.core.errors import (
 from argus.core.ids import new_uuid7, utc_now
 from argus.core.schemas import (
     AgentSession,
-    AuditLogEntry,
+    AuditLogResponse,
+    AuditQueryResponse,
+    AuditVerificationResult,
     C2OverrideCommand,
     CheckpointRecord,
     JsonPatchOp,
@@ -71,12 +76,6 @@ class SubmitOverrideRequest(BaseModel):
     operator_id: str
     reason: str = "Operator tool override decision"
     auto_resume: bool = True
-
-
-class AuditLogResponse(BaseModel):
-    session_id: str
-    chain_verified: bool
-    entries: list[AuditLogEntry]
 
 
 class HeartbeatRequest(BaseModel):
@@ -597,6 +596,33 @@ async def get_resolved_tool_override(
     return resolved
 
 
+@router.get("/audit-log", response_model=AuditQueryResponse)
+async def query_tenant_audit_log(
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    container: Annotated[AppContainer, Depends(get_container)],
+    session_id: Annotated[uuid.UUID | None, Query()] = None,
+    event_type: Annotated[str | None, Query()] = None,
+    actor_id: Annotated[str | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> AuditQueryResponse:
+    """Search and filter compliance audit logs across the caller's tenant/workspace."""
+    entries, total = await container.audit_store.query_audit_entries(
+        ctx=ctx,
+        session_id=session_id,
+        event_type=event_type,
+        actor_id=actor_id,
+        limit=limit,
+        offset=offset,
+    )
+    return AuditQueryResponse(
+        entries=entries,
+        total_count=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
 @router.get("/{session_id}/audit-log", response_model=AuditLogResponse)
 async def get_session_audit_log(
     session_id: uuid.UUID,
@@ -605,11 +631,82 @@ async def get_session_audit_log(
 ) -> AuditLogResponse:
     """Retrieve and cryptographically verify the SHA-256 hash-chained audit ledger."""
     entries = await container.audit_store.get_session_audit_log(ctx, session_id)
-    verified = await container.audit_store.verify_session_chain(ctx, session_id)
+    report = await container.audit_store.verify_session_chain_detailed(ctx, session_id)
     return AuditLogResponse(
         session_id=str(session_id),
-        chain_verified=verified,
+        chain_verified=report.is_valid,
         entries=entries,
+        verification_report=report,
+    )
+
+
+@router.get("/{session_id}/audit-log/verify", response_model=AuditVerificationResult)
+async def verify_session_audit_chain(
+    session_id: uuid.UUID,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    container: Annotated[AppContainer, Depends(get_container)],
+) -> AuditVerificationResult:
+    """Cryptographically verify the SHA-256 hash-chained audit ledger from genesis to tip."""
+    return await container.audit_store.verify_session_chain_detailed(ctx, session_id)
+
+
+@router.get("/{session_id}/audit-log/export")
+async def export_session_audit_log(
+    session_id: uuid.UUID,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    container: Annotated[AppContainer, Depends(get_container)],
+    format: Annotated[Literal["json", "jsonl", "csv"], Query()] = "json",
+) -> Response:
+    """Export verifiable compliance audit ledger in JSON, JSONL, or CSV format."""
+    entries = await container.audit_store.get_session_audit_log(ctx, session_id)
+    if format == "jsonl":
+        content = (
+            "\n".join(json.dumps(e.model_dump(mode="json")) for e in entries) + "\n"
+            if entries
+            else ""
+        )
+        media_type = "application/x-ndjson"
+    elif format == "csv":
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(
+            [
+                "audit_id",
+                "created_at",
+                "event_type",
+                "actor_id",
+                "actor_role",
+                "prev_entry_hash",
+                "payload_sha256",
+                "entry_hash",
+                "payload",
+            ]
+        )
+        for e in entries:
+            writer.writerow(
+                [
+                    str(e.audit_id),
+                    e.created_at.isoformat(),
+                    e.event_type,
+                    e.actor_id,
+                    e.actor_role.value,
+                    e.prev_entry_hash,
+                    e.payload_sha256,
+                    e.entry_hash,
+                    json.dumps(e.payload),
+                ]
+            )
+        content = output.getvalue()
+        media_type = "text/csv"
+    else:
+        content = json.dumps([e.model_dump(mode="json") for e in entries], indent=2)
+        media_type = "application/json"
+
+    filename = f"audit_{session_id}.{format}"
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

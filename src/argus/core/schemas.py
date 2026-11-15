@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from datetime import datetime
 from enum import StrEnum
 from typing import Any, Literal
@@ -556,12 +557,29 @@ class AuditLogEntry(BaseModel):
             created_at=ts,
         )
 
-    def verify_integrity(self, expected_prev_hash: str) -> bool:
-        """Recompute payload and envelope SHA-256 digests to detect any tampering."""
+    def check_integrity_detailed(
+        self, expected_prev_hash: str
+    ) -> tuple[bool, AuditViolationType | None, str | None]:
+        """Verify block integrity and return specific violation diagnostic if tampered."""
         if self.prev_entry_hash != expected_prev_hash:
-            return False
-        if compute_canonical_sha256(self.payload) != self.payload_sha256:
-            return False
+            if expected_prev_hash == GENESIS_AUDIT_HASH:
+                msg_gen = (
+                    f"Genesis hash violation: expected '{GENESIS_AUDIT_HASH}', "
+                    f"got '{self.prev_entry_hash}'."
+                )
+                return False, AuditViolationType.GENESIS_VIOLATION, msg_gen
+            msg_link = (
+                f"Chain link broken: expected prev_hash '{expected_prev_hash}', "
+                f"got '{self.prev_entry_hash}'."
+            )
+            return False, AuditViolationType.CHAIN_LINK_BROKEN, msg_link
+        computed_payload = compute_canonical_sha256(self.payload)
+        if computed_payload != self.payload_sha256:
+            msg_pay = (
+                f"Payload altered: expected digest '{self.payload_sha256}', "
+                f"computed '{computed_payload}'."
+            )
+            return False, AuditViolationType.PAYLOAD_DIGEST_MISMATCH, msg_pay
         envelope = {
             "audit_id": str(self.audit_id),
             "tenant_id": self.tenant_id,
@@ -574,7 +592,67 @@ class AuditLogEntry(BaseModel):
             "prev_entry_hash": self.prev_entry_hash,
             "created_at": self.created_at.isoformat(),
         }
-        return compute_canonical_sha256(envelope) == self.entry_hash
+        computed_envelope = compute_canonical_sha256(envelope)
+        if computed_envelope != self.entry_hash:
+            msg_env = (
+                f"Envelope altered: expected hash '{self.entry_hash}', "
+                f"computed '{computed_envelope}'."
+            )
+            return False, AuditViolationType.ENVELOPE_DIGEST_MISMATCH, msg_env
+        return True, None, None
+
+    def verify_integrity(self, expected_prev_hash: str) -> bool:
+        """Recompute payload and envelope SHA-256 digests to detect any tampering."""
+        is_valid, _, _ = self.check_integrity_detailed(expected_prev_hash)
+        return is_valid
+
+
+class AuditViolationType(StrEnum):
+    """Categorized cryptographic violation reasons when audit chain tampering occurs."""
+
+    GENESIS_VIOLATION = "GENESIS_VIOLATION"
+    PAYLOAD_DIGEST_MISMATCH = "PAYLOAD_DIGEST_MISMATCH"
+    ENVELOPE_DIGEST_MISMATCH = "ENVELOPE_DIGEST_MISMATCH"
+    CHAIN_LINK_BROKEN = "CHAIN_LINK_BROKEN"
+
+
+class AuditVerificationResult(BaseModel):
+    """Detailed cryptographic audit chain verification report for compliance attestation."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    session_id: uuid.UUID
+    is_valid: bool
+    total_entries: int
+    genesis_hash: str = Field(default=GENESIS_AUDIT_HASH)
+    tip_hash: str | None = None
+    tampered_entry_index: int | None = None
+    tampered_audit_id: uuid.UUID | None = None
+    violation_type: AuditViolationType | None = None
+    violation_details: str | None = None
+    verified_at: datetime = Field(default_factory=utc_now)
+
+
+class AuditLogResponse(BaseModel):
+    """Response envelope for audit log retrieval and cryptographic verification."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    session_id: str
+    chain_verified: bool
+    entries: list[AuditLogEntry]
+    verification_report: AuditVerificationResult | None = None
+
+
+class AuditQueryResponse(BaseModel):
+    """Paginated search response for tenant compliance audit entries."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    entries: list[AuditLogEntry]
+    total_count: int
+    limit: int
+    offset: int
 
 
 class IssueTokenRequest(BaseModel):

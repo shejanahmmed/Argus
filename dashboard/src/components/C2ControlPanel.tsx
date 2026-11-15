@@ -13,6 +13,10 @@ import {
   Radio,
   Timer,
   Activity,
+  Download,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { PendingToolCall, CheckpointRecord, AuditLogResponse, WorkerLease } from "../types";
 
@@ -96,6 +100,25 @@ export const C2ControlPanel: React.FC<C2ControlPanelProps> = ({
   );
   const [jsonPatchText, setJsonPatchText] = useState<string>(PATCH_PRESETS[0].patch);
   const [mode, setMode] = useState<"approve" | "edit" | "mock" | "reject">("approve");
+  const [showAuditChain, setShowAuditChain] = useState<boolean>(false);
+
+  const handleExportAudit = async (format: "json" | "csv" = "json") => {
+    if (!sessionId) return;
+    try {
+      const res = await fetch(`/api/v1/c2/${sessionId}/audit-log/export?format=${format}`);
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `audit_${sessionId}.${format}`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+      }
+    } catch {
+      // Fallback
+    }
+  };
 
   const currentTool =
     pendingTools.find((t) => t.tool_call_id === selectedToolId) || pendingTools[0];
@@ -466,6 +489,105 @@ export const C2ControlPanel: React.FC<C2ControlPanelProps> = ({
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Cryptographic SHA-256 Audit Chain Section */}
+      <div className="border-t border-zinc-800">
+        <div className="flex items-center justify-between px-5 py-3 bg-zinc-950/40">
+          <button
+            onClick={() => setShowAuditChain(!showAuditChain)}
+            className="flex items-center gap-2 text-xs font-semibold text-zinc-300 hover:text-white transition-colors cursor-pointer"
+          >
+            <Lock className="h-3.5 w-3.5 text-zinc-400" />
+            <span>SHA-256 Audit Chain Ledger ({auditLog?.entries.length || 0} blocks)</span>
+            {showAuditChain ? (
+              <ChevronUp className="h-3.5 w-3.5 text-zinc-400" />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5 text-zinc-400" />
+            )}
+          </button>
+
+          {auditLog && auditLog.entries.length > 0 && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleExportAudit("json")}
+                className="flex items-center gap-1 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-300 px-2 py-1 text-[11px] border border-zinc-800 transition-colors cursor-pointer"
+                title="Download JSON compliance attestation"
+              >
+                <Download className="h-3 w-3 text-zinc-400" />
+                <span>Export JSON</span>
+              </button>
+              <button
+                onClick={() => handleExportAudit("csv")}
+                className="flex items-center gap-1 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-300 px-2 py-1 text-[11px] border border-zinc-800 transition-colors cursor-pointer"
+                title="Download CSV compliance table"
+              >
+                <Download className="h-3 w-3 text-zinc-400" />
+                <span>Export CSV</span>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {showAuditChain && (
+          <div className="px-5 py-3 border-t border-zinc-800/60 bg-zinc-950/80 space-y-2.5 max-h-80 overflow-y-auto">
+            {auditLog?.verification_report && !auditLog.verification_report.is_valid && (
+              <div className="flex items-start gap-2.5 p-3 rounded-lg border border-rose-500/30 bg-rose-500/10 text-xs text-rose-300">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
+                <div>
+                  <div className="font-semibold text-rose-200">
+                    Cryptographic Integrity Violation: {auditLog.verification_report.violation_type}
+                  </div>
+                  <div className="text-[11px] text-rose-300 mt-0.5">
+                    {auditLog.verification_report.violation_details} (Tampered Block #{auditLog.verification_report.tampered_entry_index})
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {auditLog && auditLog.entries.length > 0 ? (
+              auditLog.entries.map((entry, idx) => (
+                <div
+                  key={entry.audit_id}
+                  className="p-2.5 rounded border border-zinc-800 bg-zinc-900/60 font-mono text-[11px] space-y-1.5"
+                >
+                  <div className="flex items-center justify-between text-zinc-400">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-zinc-300">Block #{idx}</span>
+                      <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-zinc-200 font-sans text-[10px] font-medium">
+                        {entry.event_type}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-zinc-500">
+                      {new Date(entry.created_at).toLocaleTimeString()} by {entry.actor_id} ({entry.actor_role})
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[10px] text-zinc-400 pt-0.5">
+                    <div className="truncate">
+                      <span className="text-zinc-500">Prev: </span>
+                      <span className="text-zinc-400">{entry.prev_entry_hash.substring(0, 16)}...</span>
+                    </div>
+                    <div className="truncate">
+                      <span className="text-zinc-500">Hash: </span>
+                      <span className="text-emerald-400/90">{entry.entry_hash.substring(0, 16)}...</span>
+                    </div>
+                  </div>
+
+                  {entry.payload && Object.keys(entry.payload).length > 0 && (
+                    <div className="text-[10px] text-zinc-500 truncate pt-0.5">
+                      payload: {JSON.stringify(entry.payload)}
+                    </div>
+                  )}
+                </div>
+              ))
+            ) : (
+              <div className="text-xs text-zinc-500 py-2">
+                No audit log entries recorded yet for this session.
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

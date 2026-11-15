@@ -214,3 +214,25 @@ async def test_sqlite_budget_and_audit_stores(
     entries = await audit_store.get_session_audit_log(ctx, session_id)
     assert len(entries) == 2
     assert await audit_store.verify_session_chain(ctx, session_id) is True
+
+    # Test detailed cryptographic chain verification
+    detailed_report = await audit_store.verify_session_chain_detailed(ctx, session_id)
+    assert detailed_report.is_valid is True
+    assert detailed_report.total_entries == 2
+    assert detailed_report.tip_hash == entries[-1].entry_hash
+    assert detailed_report.violation_type is None
+
+    # Test workspace audit query with filtering and pagination
+    query_pause, total_pause = await audit_store.query_audit_entries(
+        ctx, session_id=session_id, event_type="C2_PAUSE"
+    )
+    assert total_pause == 1
+    assert len(query_pause) == 1
+    assert query_pause[0].event_type == "C2_PAUSE"
+
+    all_paged, total_all = await audit_store.query_audit_entries(
+        ctx, session_id=session_id, limit=1, offset=1
+    )
+    assert total_all == 2
+    assert len(all_paged) == 1
+    assert all_paged[0].event_type == "C2_RESUME"

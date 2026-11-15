@@ -17,6 +17,9 @@ from argus.core.schemas import (
     AgentFramework,
     AgentSession,
     ArgusSpan,
+    AuditLogResponse,
+    AuditQueryResponse,
+    AuditVerificationResult,
     CheckpointRecord,
     CircuitBreakerVerdict,
     PendingToolCall,
@@ -228,3 +231,34 @@ class ArgusC2Client:
         path = f"/api/v1/c2/leases/reap?dry_run={'true' if dry_run else 'false'}"
         data: dict[str, Any] = await self._request("POST", path)
         return data
+
+    async def get_audit_log(self, session_id: uuid.UUID) -> AuditLogResponse:
+        """Fetch the compliance audit log for a session with cryptographic verification."""
+        data = await self._request("GET", f"/api/v1/c2/{session_id}/audit-log")
+        return AuditLogResponse.model_validate(data)
+
+    async def verify_audit_log(self, session_id: uuid.UUID) -> AuditVerificationResult:
+        """Run cryptographic verification across the audit chain and return the report."""
+        data = await self._request("GET", f"/api/v1/c2/{session_id}/audit-log/verify")
+        return AuditVerificationResult.model_validate(data)
+
+    async def query_audit_entries(
+        self,
+        *,
+        session_id: uuid.UUID | None = None,
+        event_type: str | None = None,
+        actor_id: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> AuditQueryResponse:
+        """Query audit log entries across the workspace/tenant with optional filters."""
+        params: list[str] = [f"limit={limit}", f"offset={offset}"]
+        if session_id is not None:
+            params.append(f"session_id={session_id}")
+        if event_type is not None:
+            params.append(f"event_type={event_type}")
+        if actor_id is not None:
+            params.append(f"actor_id={actor_id}")
+        query_str = "&".join(params)
+        data = await self._request("GET", f"/api/v1/c2/audit-log?{query_str}")
+        return AuditQueryResponse.model_validate(data)

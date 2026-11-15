@@ -20,6 +20,7 @@ from argus.core.schemas import (
     AgentSession,
     ArgusSpan,
     AuditLogEntry,
+    AuditVerificationResult,
     CheckpointRecord,
     SessionStatus,
 )
@@ -294,13 +295,72 @@ class InMemoryAuditStore:
             return list(self._chains.get(key, []))
 
     async def verify_session_chain(self, ctx: TenantContext, session_id: uuid.UUID) -> bool:
+        report = await self.verify_session_chain_detailed(ctx, session_id)
+        return report.is_valid
+
+    async def verify_session_chain_detailed(
+        self, ctx: TenantContext, session_id: uuid.UUID
+    ) -> AuditVerificationResult:
+        """Verify chain from genesis to tip, identifying exact block index and violation."""
         entries = await self.get_session_audit_log(ctx, session_id)
         expected_prev = GENESIS_AUDIT_HASH
-        for entry in entries:
-            if not entry.verify_integrity(expected_prev):
-                return False
+        tip_hash = entries[-1].entry_hash if entries else None
+
+        for idx, entry in enumerate(entries):
+            valid, violation_type, violation_details = entry.check_integrity_detailed(
+                expected_prev
+            )
+            if not valid:
+                return AuditVerificationResult(
+                    session_id=session_id,
+                    is_valid=False,
+                    total_entries=len(entries),
+                    genesis_hash=GENESIS_AUDIT_HASH,
+                    tip_hash=tip_hash,
+                    tampered_entry_index=idx,
+                    tampered_audit_id=entry.audit_id,
+                    violation_type=violation_type,
+                    violation_details=violation_details,
+                )
             expected_prev = entry.entry_hash
-        return True
+
+        return AuditVerificationResult(
+            session_id=session_id,
+            is_valid=True,
+            total_entries=len(entries),
+            genesis_hash=GENESIS_AUDIT_HASH,
+            tip_hash=tip_hash,
+        )
+
+    async def query_audit_entries(
+        self,
+        ctx: TenantContext,
+        *,
+        session_id: uuid.UUID | None = None,
+        event_type: str | None = None,
+        actor_id: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[AuditLogEntry], int]:
+        """Query audit entries across workspace/tenant with optional filters and pagination."""
+        async with self._lock:
+            all_matched: list[AuditLogEntry] = []
+            for (tid, wid, sid), chain in self._chains.items():
+                if tid != ctx.tenant_id or wid != ctx.workspace_id:
+                    continue
+                if session_id is not None and sid != session_id:
+                    continue
+                for entry in chain:
+                    if event_type is not None and entry.event_type != event_type:
+                        continue
+                    if actor_id is not None and entry.actor_id != actor_id:
+                        continue
+                    all_matched.append(entry)
+
+            all_matched.sort(key=lambda e: e.created_at)
+            total = len(all_matched)
+            paged = all_matched[offset : offset + limit]
+            return paged, total
 
 
 class InMemoryEventBus:

@@ -10,6 +10,7 @@ from argus.core.schemas import (
     AgentSession,
     ArgusSpan,
     AuditLogEntry,
+    AuditVerificationResult,
     CheckpointRecord,
     SessionStatus,
 )
@@ -162,6 +163,27 @@ class AuditStore(Protocol):
 
     async def verify_session_chain(self, ctx: TenantContext, session_id: uuid.UUID) -> bool:
         """Verify the entire SHA-256 hash chain from genesis to tip."""
+        ...
+
+    async def verify_session_chain_detailed(
+        self,
+        ctx: TenantContext,
+        session_id: uuid.UUID,
+    ) -> AuditVerificationResult:
+        """Verify chain from genesis to tip, identifying exact block index and violation."""
+        ...
+
+    async def query_audit_entries(
+        self,
+        ctx: TenantContext,
+        *,
+        session_id: uuid.UUID | None = None,
+        event_type: str | None = None,
+        actor_id: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[AuditLogEntry], int]:
+        """Query audit entries across workspace/tenant with optional filters and pagination."""
         ...
 
 

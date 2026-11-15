@@ -26,6 +26,7 @@ from argus.core.schemas import (
     AgentSession,
     ArgusSpan,
     AuditLogEntry,
+    AuditVerificationResult,
     CheckpointRecord,
     SessionStatus,
 )
@@ -603,10 +604,78 @@ class SqliteAuditStore:
         return [AuditLogEntry.model_validate_json(row["payload_json"]) for row in rows]
 
     async def verify_session_chain(self, ctx: TenantContext, session_id: uuid.UUID) -> bool:
+        report = await self.verify_session_chain_detailed(ctx, session_id)
+        return report.is_valid
+
+    async def verify_session_chain_detailed(
+        self, ctx: TenantContext, session_id: uuid.UUID
+    ) -> AuditVerificationResult:
+        """Verify chain from genesis to tip, identifying exact block index and violation."""
         entries = await self.get_session_audit_log(ctx, session_id)
         expected_prev = GENESIS_AUDIT_HASH
-        for entry in entries:
-            if not entry.verify_integrity(expected_prev):
-                return False
+        tip_hash = entries[-1].entry_hash if entries else None
+
+        for idx, entry in enumerate(entries):
+            valid, violation_type, violation_details = entry.check_integrity_detailed(
+                expected_prev
+            )
+            if not valid:
+                return AuditVerificationResult(
+                    session_id=session_id,
+                    is_valid=False,
+                    total_entries=len(entries),
+                    genesis_hash=GENESIS_AUDIT_HASH,
+                    tip_hash=tip_hash,
+                    tampered_entry_index=idx,
+                    tampered_audit_id=entry.audit_id,
+                    violation_type=violation_type,
+                    violation_details=violation_details,
+                )
             expected_prev = entry.entry_hash
-        return True
+
+        return AuditVerificationResult(
+            session_id=session_id,
+            is_valid=True,
+            total_entries=len(entries),
+            genesis_hash=GENESIS_AUDIT_HASH,
+            tip_hash=tip_hash,
+        )
+
+    async def query_audit_entries(
+        self,
+        ctx: TenantContext,
+        *,
+        session_id: uuid.UUID | None = None,
+        event_type: str | None = None,
+        actor_id: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[AuditLogEntry], int]:
+        """Query audit entries across workspace/tenant with optional filters and pagination."""
+        conditions = ["tenant_id = ?", "workspace_id = ?"]
+        params: list[Any] = [ctx.tenant_id, ctx.workspace_id]
+        if session_id is not None:
+            conditions.append("session_id = ?")
+            params.append(str(session_id))
+        where_clause = " AND ".join(conditions)
+
+        async with self._engine.lock:
+            cur = self._engine.conn.execute(
+                f"""
+                SELECT payload_json FROM argus_audit_ledger
+                WHERE {where_clause}
+                ORDER BY seq_id ASC
+                """,
+                params,
+            )
+            rows = cur.fetchall()
+
+        entries = [AuditLogEntry.model_validate_json(row["payload_json"]) for row in rows]
+        if event_type is not None:
+            entries = [e for e in entries if e.event_type == event_type]
+        if actor_id is not None:
+            entries = [e for e in entries if e.actor_id == actor_id]
+
+        total = len(entries)
+        paged = entries[offset : offset + limit]
+        return paged, total

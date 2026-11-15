@@ -102,10 +102,37 @@ export interface AuditLogEntry {
   created_at: string;
 }
 
+export type AuditViolationType =
+  | "GENESIS_VIOLATION"
+  | "PAYLOAD_DIGEST_MISMATCH"
+  | "ENVELOPE_DIGEST_MISMATCH"
+  | "CHAIN_LINK_BROKEN";
+
+export interface AuditVerificationResult {
+  session_id: string;
+  is_valid: boolean;
+  total_entries: number;
+  genesis_hash: string;
+  tip_hash?: string | null;
+  tampered_entry_index?: number | null;
+  tampered_audit_id?: string | null;
+  violation_type?: AuditViolationType | null;
+  violation_details?: string | null;
+  verified_at: string;
+}
+
 export interface AuditLogResponse {
   session_id: string;
   chain_verified: boolean;
   entries: AuditLogEntry[];
+  verification_report?: AuditVerificationResult | null;
+}
+
+export interface AuditQueryResponse {
+  entries: AuditLogEntry[];
+  total_count: number;
+  limit: number;
+  offset: number;
 }
 
 export interface WorkflowROIAttribution {
