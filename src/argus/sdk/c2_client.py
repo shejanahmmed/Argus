@@ -22,6 +22,8 @@ from argus.core.schemas import (
     AuditVerificationResult,
     CheckpointRecord,
     CircuitBreakerVerdict,
+    CloudWatchIngestResponse,
+    CloudWatchQueryResponse,
     DowngradeRecommendation,
     FleetROISummary,
     ModelBenchmarkProfile,
@@ -380,3 +382,49 @@ class ArgusC2Client:
             json_body=payload,
         )
         return SessionDowngradeReport.model_validate(data)
+
+    async def ingest_container_logs(
+        self,
+        log_events: list[dict[str, Any]],
+        *,
+        default_log_group: str = "/aws/ecs/ai-workers",
+        default_log_stream: str = "worker-0",
+    ) -> CloudWatchIngestResponse:
+        """Ingest a batch of containerized infrastructure logs and correlate traces."""
+        payload = {
+            "log_events": log_events,
+            "default_log_group": default_log_group,
+            "default_log_stream": default_log_stream,
+        }
+        data = await self._request(
+            "POST", "/api/v1/telemetry/cloudwatch", json_body=payload
+        )
+        return CloudWatchIngestResponse.model_validate(data)
+
+    async def query_container_logs(
+        self,
+        *,
+        trace_id: uuid.UUID | None = None,
+        session_id: uuid.UUID | None = None,
+        severity: str | None = None,
+        anomalies_only: bool = False,
+        correlated_only: bool = False,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> CloudWatchQueryResponse:
+        """Query correlated container logs with filtering and pagination metadata."""
+        params: list[str] = [f"limit={limit}", f"offset={offset}"]
+        if trace_id is not None:
+            params.append(f"trace_id={trace_id}")
+        if session_id is not None:
+            params.append(f"session_id={session_id}")
+        if severity is not None:
+            params.append(f"severity={severity}")
+        if anomalies_only:
+            params.append("anomalies_only=true")
+        if correlated_only:
+            params.append("correlated_only=true")
+
+        path = f"/api/v1/telemetry/cloudwatch/query?{'&'.join(params)}"
+        data = await self._request("GET", path)
+        return CloudWatchQueryResponse.model_validate(data)

@@ -157,6 +157,13 @@ class ArgusSettings(BaseModel):
         ge=0.0,
         description="Default cost in USD per tool execution when not specified in attributes.",
     )
+    # Container & CloudWatch Ingestor Settings
+    container_log_ring_buffer_size: int = Field(
+        default=500,
+        ge=50,
+        le=10000,
+        description="Maximum number of container logs retained in the in-memory ring buffer.",
+    )
 
     @classmethod
     def from_env(cls) -> ArgusSettings:
@@ -250,6 +257,9 @@ class ArgusSettings(BaseModel):
             ),
             roi_default_tool_execution_cost_usd=_get_float(
                 "ARGUS_ROI_TOOL_EXECUTION_COST", 0.0005
+            ),
+            container_log_ring_buffer_size=_get_int(
+                "ARGUS_CONTAINER_LOG_RING_BUFFER_SIZE", 500
             ),
         )
 

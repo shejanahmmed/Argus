@@ -814,3 +814,68 @@ class SessionDowngradeReport(BaseModel):
     current_session_cost_usd: float = Field(ge=0.0)
     recommendations: list[SessionCandidateProjection] = Field(default_factory=list)
 
+
+class ContainerAnomalyType(StrEnum):
+    """Categorized infrastructure and runtime crash classifications."""
+
+    OOM_KILL = "OOM_KILL"
+    EXIT_CODE_137 = "EXIT_CODE_137"
+    SIGKILL = "SIGKILL"
+    SIGTERM = "SIGTERM"
+    WORKER_TIMEOUT = "WORKER_TIMEOUT"
+    PANIC_CRASH = "PANIC_CRASH"
+    SEGMENTATION_FAULT = "SEGMENTATION_FAULT"
+
+
+class CorrelatedContainerLog(BaseModel):
+    """Structured container log record linked to an agent trace and session."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    log_id: UUID7
+    timestamp: datetime
+    log_group: str = Field(default="/aws/ecs/ai-workers", max_length=256)
+    log_stream: str = Field(default="worker-0", max_length=256)
+    severity: str = Field(default="INFO", max_length=32)
+    message: str
+    is_container_anomaly: bool = Field(default=False)
+    anomaly_type: ContainerAnomalyType | None = None
+    trace_id: uuid.UUID | None = None
+    span_id: uuid.UUID | None = None
+    session_id: uuid.UUID | None = None
+    raw_payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class CloudWatchIngestRequest(BaseModel):
+    """Batch ingestion request for AWS CloudWatch and container log streams."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    log_events: list[dict[str, Any]] = Field(default_factory=list)
+    default_log_group: str = Field(default="/aws/ecs/ai-workers")
+    default_log_stream: str = Field(default="worker-0")
+
+
+class CloudWatchIngestResponse(BaseModel):
+    """Ingestion confirmation detailing anomaly and trace correlation counts."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    total_logs: int
+    anomalies_count: int
+    correlated_trace_count: int
+    logs: list[CorrelatedContainerLog]
+
+
+class CloudWatchQueryResponse(BaseModel):
+    """Paginated search response for queried container logs."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    total_count: int
+    anomalies_count: int
+    correlated_count: int
+    limit: int
+    offset: int
+    logs: list[CorrelatedContainerLog]
+

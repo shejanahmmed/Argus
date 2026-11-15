@@ -9,7 +9,6 @@ from fastapi import APIRouter, Depends
 
 from argus.api.dependencies import AppContainer, get_container, get_tenant_context
 from argus.api.routes.telemetry import (
-    CloudWatchIngestRequest,
     IngestSpansRequest,
     ingest_cloudwatch,
     ingest_spans,
@@ -20,6 +19,7 @@ from argus.core.schemas import (
     AgentSession,
     ArgusSpan,
     CheckpointRecord,
+    CloudWatchIngestRequest,
     OperationName,
     PendingToolCall,
     SessionStatus,

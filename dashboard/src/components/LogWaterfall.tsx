@@ -28,59 +28,77 @@ function parseRawLogMessage(raw: string, fallbackSeverity: string): ParsedLogCon
 
 export const LogWaterfall: React.FC<LogWaterfallProps> = ({ logs }) => {
   const [filter, setFilter] = useState<"ALL" | "ANOMALIES" | "CORRELATED">("ALL");
+  const [searchQuery, setSearchQuery] = useState<string>("");
 
   const filteredLogs = useMemo(() => {
     return logs.filter((log) => {
       if (filter === "ANOMALIES") {
-        return log.is_container_anomaly || log.severity === "ERROR";
+        if (!log.is_container_anomaly && log.severity !== "ERROR") return false;
       }
       if (filter === "CORRELATED") {
-        return Boolean(log.trace_id);
+        if (!log.trace_id && !log.session_id) return false;
+      }
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchesMsg = log.message.toLowerCase().includes(q);
+        const matchesStream = log.log_stream.toLowerCase().includes(q);
+        const matchesAnomaly = log.anomaly_type ? log.anomaly_type.toLowerCase().includes(q) : false;
+        if (!matchesMsg && !matchesStream && !matchesAnomaly) return false;
       }
       return true;
     });
-  }, [logs, filter]);
+  }, [logs, filter, searchQuery]);
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-[#121215] flex flex-col shadow-sm">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between px-5 py-4 border-b border-zinc-800 gap-3">
         <div className="flex items-center gap-2.5">
           <Terminal className="h-4 w-4 text-zinc-400" />
           <h2 className="text-sm font-semibold text-zinc-100">Container Log Stream</h2>
         </div>
 
-        <div className="flex items-center rounded-lg bg-zinc-900 p-0.5 border border-zinc-800 text-xs">
-          <button
-            onClick={() => setFilter("ALL")}
-            className={`rounded px-2.5 py-1 font-medium cursor-pointer transition-colors ${
-              filter === "ALL"
-                ? "bg-zinc-800 text-white"
-                : "text-zinc-400 hover:text-zinc-200"
-            }`}
-          >
-            All ({logs.length})
-          </button>
-          <button
-            onClick={() => setFilter("ANOMALIES")}
-            className={`rounded px-2.5 py-1 font-medium cursor-pointer transition-colors ${
-              filter === "ANOMALIES"
-                ? "bg-zinc-800 text-white"
-                : "text-zinc-400 hover:text-zinc-200"
-            }`}
-          >
-            Errors & OOM
-          </button>
-          <button
-            onClick={() => setFilter("CORRELATED")}
-            className={`rounded px-2.5 py-1 font-medium cursor-pointer transition-colors ${
-              filter === "CORRELATED"
-                ? "bg-zinc-800 text-white"
-                : "text-zinc-400 hover:text-zinc-200"
-            }`}
-          >
-            Trace Linked
-          </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            type="text"
+            placeholder="Filter logs or streams..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="rounded bg-zinc-900 border border-zinc-800 px-2.5 py-1 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700 w-36 sm:w-48"
+          />
+
+          <div className="flex items-center rounded-lg bg-zinc-900 p-0.5 border border-zinc-800 text-xs">
+            <button
+              onClick={() => setFilter("ALL")}
+              className={`rounded px-2.5 py-1 font-medium cursor-pointer transition-colors ${
+                filter === "ALL"
+                  ? "bg-zinc-800 text-white"
+                  : "text-zinc-400 hover:text-zinc-200"
+              }`}
+            >
+              All ({logs.length})
+            </button>
+            <button
+              onClick={() => setFilter("ANOMALIES")}
+              className={`rounded px-2.5 py-1 font-medium cursor-pointer transition-colors ${
+                filter === "ANOMALIES"
+                  ? "bg-zinc-800 text-white"
+                  : "text-zinc-400 hover:text-zinc-200"
+              }`}
+            >
+              Errors & OOM
+            </button>
+            <button
+              onClick={() => setFilter("CORRELATED")}
+              className={`rounded px-2.5 py-1 font-medium cursor-pointer transition-colors ${
+                filter === "CORRELATED"
+                  ? "bg-zinc-800 text-white"
+                  : "text-zinc-400 hover:text-zinc-200"
+              }`}
+            >
+              Trace Linked
+            </button>
+          </div>
         </div>
       </div>
 
@@ -95,6 +113,11 @@ export const LogWaterfall: React.FC<LogWaterfallProps> = ({ logs }) => {
             const { cleanMessage, level } = parseRawLogMessage(log.message, log.severity);
             const isError = level === "ERROR" || log.is_container_anomaly;
             const isWarn = level === "WARN" || level === "WARNING";
+            const anomalyLabel = log.anomaly_type
+              ? log.anomaly_type.replace(/_/g, " ")
+              : log.is_container_anomaly
+              ? "OOM Crash"
+              : level;
 
             return (
               <div
@@ -108,7 +131,7 @@ export const LogWaterfall: React.FC<LogWaterfallProps> = ({ logs }) => {
                 }`}
               >
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span
                       className={`rounded px-1.5 py-0.5 text-[10px] font-semibold border uppercase ${
                         isError
@@ -118,7 +141,7 @@ export const LogWaterfall: React.FC<LogWaterfallProps> = ({ logs }) => {
                           : "border-zinc-700 bg-zinc-800 text-zinc-300"
                       }`}
                     >
-                      {log.is_container_anomaly ? "OOM Crash" : level}
+                      {anomalyLabel}
                     </span>
                     <span className="text-zinc-400 font-sans font-medium text-xs">
                       {log.log_stream}
@@ -128,12 +151,19 @@ export const LogWaterfall: React.FC<LogWaterfallProps> = ({ logs }) => {
                     </span>
                   </div>
 
-                  {log.trace_id && (
-                    <span className="inline-flex items-center gap-1 rounded bg-zinc-900 border border-zinc-800 px-2 py-0.5 text-[11px] text-sky-400">
-                      <Link2 className="h-3 w-3" />
-                      Trace: {log.trace_id.substring(0, 8)}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {log.session_id && (
+                      <span className="inline-flex items-center gap-1 rounded bg-zinc-900 border border-zinc-800 px-2 py-0.5 text-[11px] text-purple-400">
+                        Sess: {log.session_id.substring(0, 8)}
+                      </span>
+                    )}
+                    {log.trace_id && (
+                      <span className="inline-flex items-center gap-1 rounded bg-zinc-900 border border-zinc-800 px-2 py-0.5 text-[11px] text-sky-400">
+                        <Link2 className="h-3 w-3" />
+                        Trace: {log.trace_id.substring(0, 8)}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex items-start gap-2 pt-0.5 leading-relaxed font-sans text-xs">

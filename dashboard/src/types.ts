@@ -246,6 +246,15 @@ export interface SessionDowngradeReport {
   recommendations: SessionCandidateProjection[];
 }
 
+export type ContainerAnomalyType =
+  | "OOM_KILL"
+  | "EXIT_CODE_137"
+  | "SIGKILL"
+  | "SIGTERM"
+  | "WORKER_TIMEOUT"
+  | "PANIC_CRASH"
+  | "SEGMENTATION_FAULT";
+
 export interface ContainerLog {
   log_id: string;
   timestamp: string;
@@ -254,8 +263,19 @@ export interface ContainerLog {
   severity: string;
   message: string;
   is_container_anomaly: boolean;
+  anomaly_type?: ContainerAnomalyType | null;
   trace_id: string | null;
   span_id: string | null;
+  session_id?: string | null;
+}
+
+export interface CloudWatchQueryResponse {
+  total_count: number;
+  anomalies_count: number;
+  correlated_count: number;
+  limit: number;
+  offset: number;
+  logs: ContainerLog[];
 }
 
 export interface WorkerLease {

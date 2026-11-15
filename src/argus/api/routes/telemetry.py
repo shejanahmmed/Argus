@@ -6,7 +6,7 @@ import contextlib
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from argus.api.dependencies import AppContainer, get_container, get_tenant_context
@@ -16,10 +16,14 @@ from argus.core.schemas import (
     AgentSession,
     ArgusSpan,
     CircuitBreakerAction,
+    CloudWatchIngestRequest,
+    CloudWatchIngestResponse,
+    CloudWatchQueryResponse,
+    CorrelatedContainerLog,
     SessionStatus,
 )
 from argus.core.tenancy import TenantContext
-from argus.ingestors.cloudwatch_logs import CloudWatchLogIngestor, CorrelatedContainerLog
+from argus.ingestors.cloudwatch_logs import CloudWatchLogIngestor
 from argus.ingestors.otlp_receiver import OtlpSpanIngestor
 
 router = APIRouter(prefix="/api/v1/telemetry", tags=["Telemetry"])
@@ -44,17 +48,6 @@ class IngestSpansResponse(BaseModel):
     warning: str | None = None
 
 
-class CloudWatchIngestRequest(BaseModel):
-    log_events: list[dict[str, Any]] = Field(default_factory=list)
-
-
-class CloudWatchIngestResponse(BaseModel):
-    total_logs: int
-    anomalies_count: int
-    correlated_trace_count: int
-    logs: list[dict[str, Any]]
-
-
 def _serialize_container_log(log: CorrelatedContainerLog) -> dict[str, Any]:
     return {
         "log_id": str(log.log_id),
@@ -64,8 +57,10 @@ def _serialize_container_log(log: CorrelatedContainerLog) -> dict[str, Any]:
         "severity": log.severity,
         "message": log.message,
         "is_container_anomaly": log.is_container_anomaly,
+        "anomaly_type": log.anomaly_type.value if log.anomaly_type else None,
         "trace_id": str(log.trace_id) if log.trace_id else None,
         "span_id": str(log.span_id) if log.span_id else None,
+        "session_id": str(log.session_id) if log.session_id else None,
     }
 
 
@@ -282,14 +277,19 @@ async def ingest_cloudwatch(
 ) -> CloudWatchIngestResponse:
     """Ingest, parse, and correlate AWS CloudWatch / container log streams."""
     ingestor = CloudWatchLogIngestor()
-    parsed_logs: list[CorrelatedContainerLog] = ingestor.parse_batch(payload.log_events)
+    parsed_logs: list[CorrelatedContainerLog] = ingestor.parse_batch(
+        payload.log_events,
+        default_log_group=payload.default_log_group,
+        default_log_stream=payload.default_log_stream,
+    )
 
     anomalies = [log for log in parsed_logs if log.is_container_anomaly]
     correlated = [log for log in parsed_logs if log.trace_id is not None]
     serialized_logs = [_serialize_container_log(log) for log in parsed_logs]
 
     if parsed_logs:
-        container.container_logs = (parsed_logs + container.container_logs)[:200]
+        max_buffer = container.settings.container_log_ring_buffer_size
+        container.container_logs = (parsed_logs + container.container_logs)[:max_buffer]
         await container.event_bus.publish(
             ctx,
             channel="telemetry.cloudwatch",
@@ -300,21 +300,92 @@ async def ingest_cloudwatch(
                 "logs": serialized_logs,
             },
         )
+        if anomalies:
+            await container.event_bus.publish(
+                ctx,
+                channel="governance.circuit_breaker",
+                event={
+                    "event_type": "CONTAINER_ANOMALY_DETECTED",
+                    "anomalies_count": len(anomalies),
+                    "anomalies": [_serialize_container_log(a) for a in anomalies],
+                },
+            )
 
     return CloudWatchIngestResponse(
         total_logs=len(parsed_logs),
         anomalies_count=len(anomalies),
         correlated_trace_count=len(correlated),
-        logs=serialized_logs,
+        logs=parsed_logs,
     )
 
 
 @router.get("/cloudwatch", response_model=list[dict[str, Any]])
 async def list_cloudwatch_logs(
     container: Annotated[AppContainer, Depends(get_container)],
+    trace_id: Annotated[uuid.UUID | None, Query()] = None,
+    session_id: Annotated[uuid.UUID | None, Query()] = None,
+    severity: Annotated[str | None, Query()] = None,
+    anomalies_only: Annotated[bool, Query()] = False,
+    correlated_only: Annotated[bool, Query()] = False,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[dict[str, Any]]:
-    """Retrieve recent correlated container / CloudWatch logs."""
-    return [_serialize_container_log(log) for log in container.container_logs]
+    """Retrieve recent correlated container / CloudWatch logs with optional filters."""
+    logs = container.container_logs
+    if trace_id is not None:
+        logs = [log for log in logs if log.trace_id == trace_id]
+    if session_id is not None:
+        logs = [log for log in logs if log.session_id == session_id]
+    if severity is not None:
+        logs = [log for log in logs if log.severity.upper() == severity.upper()]
+    if anomalies_only:
+        logs = [log for log in logs if log.is_container_anomaly]
+    if correlated_only:
+        logs = [log for log in logs if log.trace_id is not None or log.session_id is not None]
+
+    paginated = logs[offset : offset + limit]
+    return [_serialize_container_log(log) for log in paginated]
+
+
+@router.get("/cloudwatch/query", response_model=CloudWatchQueryResponse)
+async def query_cloudwatch_logs(
+    container: Annotated[AppContainer, Depends(get_container)],
+    trace_id: Annotated[uuid.UUID | None, Query()] = None,
+    session_id: Annotated[uuid.UUID | None, Query()] = None,
+    severity: Annotated[str | None, Query()] = None,
+    anomalies_only: Annotated[bool, Query()] = False,
+    correlated_only: Annotated[bool, Query()] = False,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> CloudWatchQueryResponse:
+    """Query recent correlated container logs with metadata and pagination."""
+    logs = container.container_logs
+    if trace_id is not None:
+        logs = [log for log in logs if log.trace_id == trace_id]
+    if session_id is not None:
+        logs = [log for log in logs if log.session_id == session_id]
+    if severity is not None:
+        logs = [log for log in logs if log.severity.upper() == severity.upper()]
+    if anomalies_only:
+        logs = [log for log in logs if log.is_container_anomaly]
+    if correlated_only:
+        logs = [log for log in logs if log.trace_id is not None or log.session_id is not None]
+
+    total_count = len(logs)
+    anomalies_count = sum(1 for log in logs if log.is_container_anomaly)
+    correlated_count = sum(
+        1 for log in logs if log.trace_id is not None or log.session_id is not None
+    )
+    paginated = logs[offset : offset + limit]
+
+    return CloudWatchQueryResponse(
+        total_count=total_count,
+        anomalies_count=anomalies_count,
+        correlated_count=correlated_count,
+        limit=limit,
+        offset=offset,
+        logs=paginated,
+    )
 
 
 @router.get("/sessions", response_model=list[AgentSession])

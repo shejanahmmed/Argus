@@ -7,7 +7,13 @@ import json
 import pytest
 
 from argus.core.ids import new_uuid7, utc_now
-from argus.core.schemas import AgentFramework, ArgusSpan, OperationName, SpanKind
+from argus.core.schemas import (
+    AgentFramework,
+    ArgusSpan,
+    ContainerAnomalyType,
+    OperationName,
+    SpanKind,
+)
 from argus.core.tenancy import Role, TenantContext
 from argus.ingestors.cloudwatch_logs import CloudWatchLogIngestor
 from argus.ingestors.otlp_receiver import OtlpSpanIngestor
@@ -37,8 +43,52 @@ def test_cloudwatch_log_correlates_trace_and_flags_anomalies() -> None:
     assert log.trace_id == trace_id
     assert log.span_id == span_id
     assert log.is_container_anomaly is True
+    assert log.anomaly_type == ContainerAnomalyType.EXIT_CODE_137
     assert log.severity == "ERROR"
     assert log.log_group == "/aws/ecs/ai-workers"
+
+
+def test_cloudwatch_anomaly_taxonomy_classification() -> None:
+    ingestor = CloudWatchLogIngestor()
+
+    test_cases = [
+        ("task timed out after 300.00 seconds executing tool", ContainerAnomalyType.WORKER_TIMEOUT),
+        ("fatal error: runtime error: invalid memory address", ContainerAnomalyType.PANIC_CRASH),
+        ("panic: segmentation violation in worker thread", ContainerAnomalyType.PANIC_CRASH),
+        ("process received signal 9 (sigkill)", ContainerAnomalyType.SIGKILL),
+        ("graceful shutdown timeout exceeded, sending sigterm", ContainerAnomalyType.SIGTERM),
+        ("kernel: [12345.67] segfault at 000000000000", ContainerAnomalyType.SEGMENTATION_FAULT),
+        ("cgroup out of memory: Killed process 42", ContainerAnomalyType.OOM_KILL),
+    ]
+
+    for message, expected_type in test_cases:
+        log = ingestor.parse_log_event({"message": message})
+        assert log.is_container_anomaly is True
+        assert log.anomaly_type == expected_type
+
+
+def test_cloudwatch_w3c_traceparent_and_session_extraction() -> None:
+    ingestor = CloudWatchLogIngestor()
+    session_id = new_uuid7()
+
+    raw_event = {
+        "logStream": "worker-2",
+        "timestamp": "2026-11-15T22:30:00Z",
+        "message": json.dumps(
+            {
+                "session_id": str(session_id),
+                "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+                "message": "Step executed successfully",
+            }
+        ),
+    }
+
+    log = ingestor.parse_log_event(raw_event)
+    assert log.session_id == session_id
+    assert log.trace_id is not None
+    assert log.trace_id.hex == "4bf92f3577b34da6a3ce929d0e0e4736"
+    assert log.span_id is not None
+    assert log.is_container_anomaly is False
 
 
 def test_otlp_span_ingestor_normalizes_openinference_format() -> None:

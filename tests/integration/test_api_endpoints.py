@@ -1514,3 +1514,77 @@ async def test_hf_benchmark_catalog_and_session_projection_lifecycle(
         assert top_cand.projected_annual_savings_10k_sessions_usd > 0.0
 
 
+@pytest.mark.asyncio
+async def test_cloudwatch_query_filtering_and_sdk_lifecycle(
+    auth_headers: dict[str, str],
+) -> None:
+    trace_id = new_uuid7()
+    span_id = new_uuid7()
+    session_id = new_uuid7()
+    ctx = TenantContext(
+        tenant_id=auth_headers["X-Tenant-ID"],
+        workspace_id=auth_headers["X-Workspace-ID"],
+        actor_id=auth_headers["X-Actor-ID"],
+        role=Role(auth_headers["X-Role"]),
+    )
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        sdk = ArgusC2Client(ctx, client=client)
+
+        raw_logs = [
+            {
+                "logGroup": "/aws/ecs/ai-workers",
+                "logStream": "worker-1",
+                "timestamp": "2026-11-15T22:00:00Z",
+                "message": '{"level": "INFO", "msg": "Worker booted and listening for tasks"}',
+            },
+            {
+                "logGroup": "/aws/ecs/ai-workers",
+                "logStream": "worker-1",
+                "timestamp": "2026-11-15T22:01:00Z",
+                "message": (
+                    f'{{"level": "ERROR", "trace_id": "{trace_id}", "span_id": "{span_id}", '
+                    f'"msg": "Container fatal: Out of memory (exit code 137)"}}'
+                ),
+            },
+            {
+                "logGroup": "/aws/ecs/ai-workers",
+                "logStream": "worker-2",
+                "timestamp": "2026-11-15T22:02:00Z",
+                "message": (
+                    f'{{"level": "ERROR", "session_id": "{session_id}", '
+                    f'"msg": "Task timed out after 300.0s executing tool"}}'
+                ),
+            },
+        ]
+
+        # 1. Ingest via SDK
+        ingest_res = await sdk.ingest_container_logs(raw_logs)
+        assert ingest_res.total_logs == 3
+        assert ingest_res.anomalies_count == 2
+        assert ingest_res.correlated_trace_count == 1
+
+        # 2. Query with anomalies_only filter via SDK
+        query_anomalies = await sdk.query_container_logs(anomalies_only=True)
+        assert query_anomalies.total_count == 2
+        assert query_anomalies.anomalies_count == 2
+        for log in query_anomalies.logs:
+            assert log.is_container_anomaly is True
+
+        # 3. Query with trace_id filter via SDK
+        query_trace = await sdk.query_container_logs(trace_id=trace_id)
+        assert query_trace.total_count == 1
+        assert query_trace.logs[0].trace_id == trace_id
+        assert query_trace.logs[0].span_id == span_id
+
+        # 4. Query standard GET endpoint with pagination
+        r_list = await client.get("/api/v1/telemetry/cloudwatch?limit=2", headers=auth_headers)
+        assert r_list.status_code == 200
+        logs_list = r_list.json()
+        assert len(logs_list) == 2
+        assert "log_id" in logs_list[0]
+        assert "message" in logs_list[0]
+
+
