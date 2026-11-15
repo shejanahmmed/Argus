@@ -285,7 +285,8 @@ async def intercept_mcp_tool_call(
         verdict.recommended_action == CircuitBreakerAction.PAUSE_FOR_C2
         and pending_call is not None
     ):
-        container.pending_tool_calls.setdefault(str(payload.session_id), []).append(pending_call)
+        key = f"{ctx.tenant_id}:{payload.session_id}"
+        container.pending_tool_calls.setdefault(key, []).append(pending_call)
         with contextlib.suppress(Exception):
             await container.control_store.transition_session(
                 ctx=ctx,
@@ -301,10 +302,46 @@ async def intercept_mcp_tool_call(
                 "tool_call_id": pending_call.tool_call_id,
                 "tool_name": pending_call.tool_name,
                 "request_digest_sha256": pending_call.request_digest_sha256,
+                "security_risk": pending_call.security_risk,
             },
         )
 
     return McpInterceptResponse(verdict=verdict, pending_tool_call=pending_call)
+
+
+@router.post("/mcp/rpc")
+async def mcp_jsonrpc_gateway(
+    payload: dict[str, Any],
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    container: Annotated[AppContainer, Depends(get_container)],
+) -> dict[str, Any]:
+    """JSON-RPC 2.0 gateway endpoint for standard Model Context Protocol (MCP) clients."""
+    resp_json, pending = await container.mcp_proxy.handle_jsonrpc(ctx=ctx, request=payload)
+    if pending is not None:
+        params = payload.get("params", {}) or {}
+        session_raw = params.get("session_id")
+        session_id_str = str(session_raw) if session_raw else str(uuid.uuid4())
+        key = f"{ctx.tenant_id}:{session_id_str}"
+        container.pending_tool_calls.setdefault(key, []).append(pending)
+        with contextlib.suppress(Exception):
+            await container.control_store.transition_session(
+                ctx=ctx,
+                session_id=uuid.UUID(session_id_str),
+                expected_status=SessionStatus.RUNNING,
+                next_status=SessionStatus.PAUSED_C2,
+            )
+        await container.event_bus.publish(
+            ctx,
+            channel="c2.intervention_required",
+            event={
+                "session_id": session_id_str,
+                "tool_call_id": pending.tool_call_id,
+                "tool_name": pending.tool_name,
+                "request_digest_sha256": pending.request_digest_sha256,
+                "security_risk": pending.security_risk,
+            },
+        )
+    return resp_json
 
 
 @router.post("/reset-loop/{session_id}")

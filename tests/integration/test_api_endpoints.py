@@ -810,3 +810,131 @@ async def test_governance_check_budget_with_dynamic_tokens_and_http_402(
         )
         assert r_release.status_code == 200
         assert r_release.json()["updated_spend_usd"] == pytest.approx(0.0175, abs=1e-4)
+
+
+@pytest.mark.asyncio
+async def test_mcp_jsonrpc_gateway_endpoints(auth_headers: dict[str, str]) -> None:
+    container = get_container()
+    ctx = TenantContext(
+        tenant_id="test_tenant",
+        workspace_id="test_workspace",
+        actor_id="admin_user",
+        role=Role.ADMIN,
+    )
+    session_id = new_uuid7()
+    session = AgentSession(
+        session_id=session_id,
+        tenant_id=ctx.tenant_id,
+        workspace_id=ctx.workspace_id,
+        workflow_id="wf_mcp",
+        agent_name="mcp_worker",
+        framework=AgentFramework.CREWAI,
+        budget_cap_usd=50.0,
+        status=SessionStatus.RUNNING,
+    )
+    await container.control_store.create_session(ctx, session)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        # 1. tools/list JSON-RPC request
+        rpc_list = {
+            "jsonrpc": "2.0",
+            "id": 101,
+            "method": "tools/list",
+            "params": {
+                "tools": [
+                    {"name": "lookup_user", "description": "Safe lookup tool"},
+                    {"name": "drop_table", "description": "Destructive drop table tool"},
+                ]
+            },
+        }
+        res_list = await client.post(
+            "/api/v1/governance/mcp/rpc",
+            headers=auth_headers,
+            json=rpc_list,
+        )
+        assert res_list.status_code == 200
+        data_list = res_list.json()
+        assert data_list["id"] == 101
+        assert len(data_list["result"]["tools"]) == 2
+
+        # 2. tools/call JSON-RPC request (destructive tool) -> paused for C2
+        rpc_call = {
+            "jsonrpc": "2.0",
+            "id": 102,
+            "method": "tools/call",
+            "params": {
+                "name": "drop_table",
+                "arguments": {"table": "accounts_ledger"},
+                "session_id": str(session_id),
+                "estimated_cost_usd": 0.05,
+                "hard_cap_usd": 50.0,
+            },
+        }
+        res_call = await client.post(
+            "/api/v1/governance/mcp/rpc",
+            headers=auth_headers,
+            json=rpc_call,
+        )
+        assert res_call.status_code == 200
+        data_call = res_call.json()
+        assert data_call["id"] == 102
+        assert data_call["error"]["code"] == -32001
+        assert data_call["error"]["data"]["status"] == "PAUSED_C2"
+
+        # Session should now be transitioned to PAUSED_C2
+        updated_sess = await container.control_store.get_session(ctx, session_id)
+        assert updated_sess.status == SessionStatus.PAUSED_C2
+
+
+@pytest.mark.asyncio
+async def test_c2_pending_tools_multitenant_isolation(auth_headers: dict[str, str]) -> None:
+    container = get_container()
+    session_id = new_uuid7()
+
+    # Intercept tool under tenant 'test_tenant'
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        r_intercept = await client.post(
+            "/api/v1/governance/mcp/intercept",
+            headers=auth_headers,
+            json={
+                "session_id": str(session_id),
+                "tool_call_id": "call_sec_777",
+                "tool_name": "delete_audit_logs",
+                "tool_args": {"target": "all"},
+                "estimated_cost_usd": 0.01,
+                "hard_cap_usd": 10.0,
+            },
+        )
+        assert r_intercept.status_code == 200
+
+        # Query pending tools using Tenant A auth headers
+        res_tenant_a = await client.get(
+            f"/api/v1/c2/{session_id}/pending-tools",
+            headers=auth_headers,
+        )
+        assert res_tenant_a.status_code == 200
+        tools_a = res_tenant_a.json()
+        assert len(tools_a) == 1
+        assert tools_a[0]["tool_name"] == "delete_audit_logs"
+
+        # Query pending tools as Tenant B (different tenant ID in baggage/headers)
+        tenant_b_ctx = TenantContext(
+            tenant_id="other_corp",
+            workspace_id="ws_b",
+            actor_id="op_b",
+            role=Role.ADMIN,
+        )
+        tenant_b_token = container.authenticator.issue_token(tenant_b_ctx)
+        tenant_b_headers = {"Authorization": f"Bearer {tenant_b_token}"}
+        res_tenant_b = await client.get(
+            f"/api/v1/c2/{session_id}/pending-tools",
+            headers=tenant_b_headers,
+        )
+        assert res_tenant_b.status_code == 200
+        tools_b = res_tenant_b.json()
+        assert len(tools_b) == 0  # Strictly isolated across tenant boundaries!
+

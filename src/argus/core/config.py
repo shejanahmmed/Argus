@@ -103,6 +103,15 @@ class ArgusSettings(BaseModel):
         default=False,
         description="Whether check-budget endpoint raises HTTP 402 by default on budget trip.",
     )
+    # MCP Governance Proxy Settings
+    mcp_enforce_injection_scan: bool = Field(
+        default=True,
+        description="Whether to scan MCP tool arguments and descriptions for injection threats.",
+    )
+    mcp_extra_destructive_patterns: tuple[str, ...] = Field(
+        default=("truncate", "format", "kill", "wipe", "destroy"),
+        description="Additional tool name substrings treated as destructive requiring C2 approval.",
+    )
 
     @classmethod
     def from_env(cls) -> ArgusSettings:
@@ -156,6 +165,12 @@ class ArgusSettings(BaseModel):
         raw_402 = os.environ.get("ARGUS_BUDGET_ENFORCE_HTTP_402", "").strip().lower()
         budget_402 = raw_402 in ("1", "true", "yes")
 
+        raw_scan = os.environ.get("ARGUS_MCP_ENFORCE_INJECTION_SCAN", "1").strip().lower()
+        mcp_scan = raw_scan not in ("0", "false", "no")
+
+        raw_extra = os.environ.get("ARGUS_MCP_EXTRA_DESTRUCTIVE", "").strip()
+        extra_destructive = tuple(p.strip() for p in raw_extra.split(",") if p.strip())
+
         return cls(
             env=env,
             auth_secret=auth_secret,
@@ -173,6 +188,9 @@ class ArgusSettings(BaseModel):
             budget_default_cap_usd=_get_float("ARGUS_BUDGET_DEFAULT_CAP", 50.0),
             budget_warning_threshold=_get_float("ARGUS_BUDGET_WARNING_THRESHOLD", 0.80),
             budget_enforce_http_402=budget_402,
+            mcp_enforce_injection_scan=mcp_scan,
+            mcp_extra_destructive_patterns=extra_destructive
+            or ("truncate", "format", "kill", "wipe", "destroy"),
         )
 
     @model_validator(mode="after")

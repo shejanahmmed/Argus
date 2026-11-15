@@ -204,7 +204,7 @@ async def seed_demo_scenario(
         tool_args={"table": "customer_audit_archive", "cascade": True, "env": "prod"},
         is_destructive=True,
     )
-    container.pending_tool_calls.setdefault(str(s2_id), []).append(pending_call)
+    container.pending_tool_calls.setdefault(f"{ctx.tenant_id}:{s2_id}", []).append(pending_call)
     await container.control_store.transition_session(
         ctx,
         session_id=s2_id,

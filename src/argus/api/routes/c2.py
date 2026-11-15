@@ -315,10 +315,15 @@ async def apply_json_patch_state(
 @router.get("/{session_id}/pending-tools", response_model=list[PendingToolCall])
 async def get_pending_tool_calls(
     session_id: uuid.UUID,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
     container: Annotated[AppContainer, Depends(get_container)],
 ) -> list[PendingToolCall]:
-    """Retrieve all pending tool calls awaiting human operator decision."""
-    return container.pending_tool_calls.get(str(session_id), [])
+    """Retrieve all pending tool calls awaiting human operator decision for caller's tenant."""
+    key = f"{ctx.tenant_id}:{session_id}"
+    calls = container.pending_tool_calls.get(key)
+    if calls is None:
+        calls = container.pending_tool_calls.get(str(session_id), [])
+    return calls
 
 
 @router.post("/{session_id}/pending-tools", response_model=PendingToolCall)
@@ -328,8 +333,9 @@ async def register_pending_tool_call(
     ctx: Annotated[TenantContext, Depends(get_tenant_context)],
     container: Annotated[AppContainer, Depends(get_container)],
 ) -> PendingToolCall:
-    """Register an intercepted tool call requiring human authorization."""
-    container.pending_tool_calls.setdefault(str(session_id), []).append(call)
+    """Register an intercepted tool call requiring human authorization within tenant boundary."""
+    key = f"{ctx.tenant_id}:{session_id}"
+    container.pending_tool_calls.setdefault(key, []).append(call)
     await container.event_bus.publish(
         ctx,
         channel="c2.intervention_required",
@@ -338,6 +344,7 @@ async def register_pending_tool_call(
             "tool_call_id": call.tool_call_id,
             "tool_name": call.tool_name,
             "request_digest_sha256": call.request_digest_sha256,
+            "security_risk": call.security_risk,
         },
     )
     return call
@@ -351,7 +358,10 @@ async def submit_tool_override(
     container: Annotated[AppContainer, Depends(get_container)],
 ) -> dict[str, Any]:
     """Submit operator decision (approve/edit/mock/reject) with cryptographic digest check."""
-    calls = container.pending_tool_calls.get(str(session_id), [])
+    key = f"{ctx.tenant_id}:{session_id}"
+    calls = container.pending_tool_calls.get(key)
+    if calls is None:
+        calls = container.pending_tool_calls.get(str(session_id), [])
     matching_call = next((c for c in calls if c.tool_call_id == payload.tool_call_id), None)
     if matching_call is None:
         raise HTTPException(
@@ -390,7 +400,14 @@ async def submit_tool_override(
             pending_call=matching_call,
         )
 
-        container.pending_tool_calls[str(session_id)].remove(matching_call)
+        if key in container.pending_tool_calls:
+            calls_list = container.pending_tool_calls[key]
+            if matching_call in calls_list:
+                calls_list.remove(matching_call)
+        elif str(session_id) in container.pending_tool_calls:
+            calls_legacy = container.pending_tool_calls[str(session_id)]
+            if matching_call in calls_legacy:
+                calls_legacy.remove(matching_call)
 
         await container.audit_ledger.record_intervention(
             ctx=ctx,

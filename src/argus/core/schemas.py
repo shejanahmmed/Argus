@@ -232,6 +232,13 @@ class PendingToolCall(BaseModel):
     tool_name: str = Field(min_length=1, max_length=256)
     tool_args: dict[str, Any] = Field(default_factory=dict)
     is_destructive: bool = Field(default=False)
+    security_risk: str | None = Field(default=None)
+    created_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("created_at")
+    @classmethod
+    def _validate_created_at(cls, v: datetime) -> datetime:
+        return _require_tz_aware(v, "created_at")
 
     @property
     def request_digest_sha256(self) -> str:
@@ -327,6 +334,8 @@ class CircuitBreakerReason(StrEnum):
     STATE_OSCILLATION = "STATE_OSCILLATION"
     SEMANTIC_STAGNATION = "SEMANTIC_STAGNATION"
     BUDGET_EXCEEDED = "BUDGET_EXCEEDED"
+    SECURITY_VIOLATION = "SECURITY_VIOLATION"
+    HIGH_RISK_TOOL = "HIGH_RISK_TOOL"
 
 
 class CircuitBreakerAction(StrEnum):

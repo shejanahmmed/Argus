@@ -101,6 +101,8 @@ class AppContainer:
         self.mcp_proxy = McpGovernanceProxy(
             loop_detector=self.loop_detector,
             budget_guard=self.budget_guard,
+            extra_destructive_patterns=self.settings.mcp_extra_destructive_patterns,
+            enforce_injection_scan=self.settings.mcp_enforce_injection_scan,
         )
         self.c2_state_manager = C2StateManager(control_store=self.control_store)
         self.lease_manager = C2LeaseManager(
