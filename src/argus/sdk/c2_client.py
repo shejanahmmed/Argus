@@ -7,6 +7,7 @@ evaluate pre-execution MCP tool calls against the Argus Control Plane, and sync 
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from collections.abc import AsyncIterator, Sequence
 from typing import Any, cast
@@ -46,13 +47,23 @@ class ArgusC2Client:
         ctx: TenantContext,
         *,
         auth_token: str | None = None,
-        base_url: str = "http://localhost:8000",
+        base_url: str | None = None,
         client: httpx.AsyncClient | None = None,
         timeout_seconds: float = 10.0,
     ) -> None:
+        resolved_url = (
+            base_url
+            if base_url is not None
+            else os.environ.get("ARGUS_BASE_URL", "http://localhost:8000")
+        )
+        resolved_token = (
+            auth_token
+            if auth_token is not None
+            else os.environ.get("ARGUS_AUTH_TOKEN")
+        )
         self._ctx = ctx
-        self._auth_token = auth_token
-        self._base_url = base_url.rstrip("/")
+        self._auth_token = resolved_token
+        self._base_url = resolved_url.rstrip("/")
         self._external_client = client
         self._timeout = timeout_seconds
 

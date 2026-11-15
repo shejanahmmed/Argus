@@ -51,21 +51,27 @@ export const App: React.FC = () => {
   const [workspaceId, setWorkspaceId] = useState<string>(
     () => localStorage.getItem("argus_workspace_id") || "default_workspace"
   );
+  const [actorId, setActorId] = useState<string>(
+    () => localStorage.getItem("argus_actor_id") || "operator_admin"
+  );
   const [authToken, setAuthToken] = useState<string>(
     () => localStorage.getItem("argus_auth_token") || ""
   );
 
   const handleSaveAuthConfig = useCallback(
-    (newTenant: string, newWorkspace: string, newToken: string) => {
+    (newTenant: string, newWorkspace: string, newActor: string, newToken: string) => {
       const validTenant = newTenant.trim() || "default_tenant";
       const validWorkspace = newWorkspace.trim() || "default_workspace";
+      const validActor = newActor.trim() || "operator_admin";
       setTenantId(validTenant);
       setWorkspaceId(validWorkspace);
+      setActorId(validActor);
       setAuthToken(newToken);
       localStorage.setItem("argus_tenant_id", validTenant);
       localStorage.setItem("argus_workspace_id", validWorkspace);
+      localStorage.setItem("argus_actor_id", validActor);
       localStorage.setItem("argus_auth_token", newToken);
-      setStatusMessage(`Updated context to ${validTenant} / ${validWorkspace}`);
+      setStatusMessage(`Updated context to ${validTenant} / ${validWorkspace} (${validActor})`);
     },
     []
   );
@@ -78,9 +84,10 @@ export const App: React.FC = () => {
       }
       headers.set("X-Tenant-ID", tenantId);
       headers.set("X-Workspace-ID", workspaceId);
+      headers.set("X-Actor-ID", actorId);
       return fetch(input, { ...init, headers });
     },
-    [authToken, tenantId, workspaceId]
+    [authToken, tenantId, workspaceId, actorId]
   );
 
   const selectedSession = sessions.find((s) => s.session_id === selectedSessionId) || null;
@@ -128,29 +135,33 @@ export const App: React.FC = () => {
     }
   }, [authFetch, fetchSystemReadiness]);
 
-  const fetchBenchmarks = useCallback(async () => {
-    try {
-      const res = await authFetch("/api/v1/attribution/benchmarks/catalog");
-      if (res.ok) {
-        const data = await res.json();
-        setBenchmarks(data);
+  const fetchBenchmarks = useCallback(
+    async (targetModel?: string) => {
+      try {
+        const res = await authFetch("/api/v1/attribution/benchmarks/catalog");
+        if (res.ok) {
+          const data = await res.json();
+          setBenchmarks(data);
+        }
+        const modelToEvaluate = targetModel || selectedSpan?.model_name || "claude-3-5-sonnet";
+        const recRes = await authFetch("/api/v1/attribution/benchmarks/recommend", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            current_model: modelToEvaluate,
+            min_acceptable_accuracy: 0.5,
+          }),
+        });
+        if (recRes.ok) {
+          const recData = await recRes.json();
+          setRecommendations(recData);
+        }
+      } catch {
+        // Offline fallback
       }
-      const recRes = await authFetch("/api/v1/attribution/benchmarks/recommend", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          current_model: "claude-3-5-sonnet",
-          min_acceptable_accuracy: 0.5,
-        }),
-      });
-      if (recRes.ok) {
-        const recData = await recRes.json();
-        setRecommendations(recData);
-      }
-    } catch {
-      // Offline fallback
-    }
-  }, [authFetch]);
+    },
+    [authFetch, selectedSpan]
+  );
 
   const fetchSessionDetails = useCallback(
     async (sessionId: string, assignedValue: number = businessValueUsd) => {
@@ -414,7 +425,7 @@ export const App: React.FC = () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        operator_id: "operator_admin",
+        operator_id: actorId,
         reason: "Operator manual pause",
       }),
     });
@@ -430,7 +441,7 @@ export const App: React.FC = () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        operator_id: "operator_admin",
+        operator_id: actorId,
         reason: "Operator resumed session",
       }),
     });
@@ -446,7 +457,7 @@ export const App: React.FC = () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        operator_id: "operator_admin",
+        operator_id: actorId,
         reason: "Operator terminated session",
       }),
     });
@@ -465,7 +476,7 @@ export const App: React.FC = () => {
       body: JSON.stringify({
         tool_call_id: toolCallId,
         decision: "approve",
-        operator_id: "operator_admin",
+        operator_id: actorId,
         reason: "Operator approved tool execution",
       }),
     });
@@ -487,7 +498,7 @@ export const App: React.FC = () => {
         tool_call_id: toolCallId,
         decision: "edit",
         modified_args: modifiedArgs,
-        operator_id: "operator_admin",
+        operator_id: actorId,
         reason: "Operator sanitized tool parameters",
       }),
     });
@@ -509,7 +520,7 @@ export const App: React.FC = () => {
         tool_call_id: toolCallId,
         decision: "mock",
         mock_output: mockOutput,
-        operator_id: "operator_admin",
+        operator_id: actorId,
         reason: "Injected mock fixture",
       }),
     });
@@ -528,7 +539,7 @@ export const App: React.FC = () => {
         tool_call_id: toolCallId,
         decision: "reject",
         rejection_reason: reason,
-        operator_id: "operator_admin",
+        operator_id: actorId,
         reason: "Security policy guardrail rejection",
       }),
     });
@@ -551,7 +562,7 @@ export const App: React.FC = () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          operator_id: "operator_admin",
+          operator_id: actorId,
           expected_parent_checkpoint_id: expectedCpId,
           patches: patches,
           reason: "RFC 6902 memory patch",
@@ -609,6 +620,7 @@ export const App: React.FC = () => {
         hasSelectedSession={Boolean(selectedSessionId)}
         tenantId={tenantId}
         workspaceId={workspaceId}
+        actorId={actorId}
         authToken={authToken}
         onSaveAuthConfig={handleSaveAuthConfig}
         storageBackend={storageBackend}
@@ -641,6 +653,7 @@ export const App: React.FC = () => {
               spans={spans}
               selectedSpan={selectedSpan}
               onSelectSpan={(span) => setSelectedSpan(span)}
+              authFetch={authFetch}
             />
           )}
 
@@ -659,6 +672,7 @@ export const App: React.FC = () => {
               onRejectTool={handleRejectTool}
               onApplyPatch={handleApplyPatch}
               onReapLeases={handleReapLeases}
+              authFetch={authFetch}
             />
           )}
 

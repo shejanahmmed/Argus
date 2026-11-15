@@ -34,6 +34,7 @@ interface C2ControlPanelProps {
   onRejectTool: (toolCallId: string, reason: string) => void;
   onApplyPatch: (patchesJson: string) => void;
   onReapLeases?: () => void;
+  authFetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 }
 
 const PATCH_PRESETS: Array<{ label: string; patch: string }> = [
@@ -89,6 +90,7 @@ export const C2ControlPanel: React.FC<C2ControlPanelProps> = ({
   onRejectTool,
   onApplyPatch,
   onReapLeases,
+  authFetch,
 }) => {
   const [selectedToolId, setSelectedToolId] = useState<string | null>(null);
   const [editArgsText, setEditArgsText] = useState<string>("");
@@ -105,7 +107,8 @@ export const C2ControlPanel: React.FC<C2ControlPanelProps> = ({
   const handleExportAudit = async (format: "json" | "csv" = "json") => {
     if (!sessionId) return;
     try {
-      const res = await fetch(`/api/v1/c2/${sessionId}/audit-log/export?format=${format}`);
+      const fetchFn = authFetch || fetch;
+      const res = await fetchFn(`/api/v1/c2/${sessionId}/audit-log/export?format=${format}`);
       if (res.ok) {
         const blob = await res.blob();
         const url = window.URL.createObjectURL(blob);

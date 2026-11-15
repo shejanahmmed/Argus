@@ -29,8 +29,9 @@ interface HeaderProps {
   hasSelectedSession: boolean;
   tenantId: string;
   workspaceId: string;
+  actorId: string;
   authToken: string;
-  onSaveAuthConfig: (tenant: string, workspace: string, token: string) => void;
+  onSaveAuthConfig: (tenant: string, workspace: string, actor: string, token: string) => void;
   storageBackend?: string;
   storageDiagnostics?: StorageDiagnostics | null;
   systemReady?: boolean;
@@ -50,6 +51,7 @@ export const Header: React.FC<HeaderProps> = ({
   hasSelectedSession,
   tenantId,
   workspaceId,
+  actorId,
   authToken,
   onSaveAuthConfig,
   storageBackend = "sqlite",
@@ -61,6 +63,7 @@ export const Header: React.FC<HeaderProps> = ({
   const [showStorageModal, setShowStorageModal] = useState<boolean>(false);
   const [modalTenant, setModalTenant] = useState<string>(tenantId);
   const [modalWorkspace, setModalWorkspace] = useState<string>(workspaceId);
+  const [modalActor, setModalActor] = useState<string>(actorId);
   const [modalToken, setModalToken] = useState<string>(authToken);
 
   const activeCount = sessions.filter((s) => s.status === "RUNNING").length;
@@ -73,12 +76,13 @@ export const Header: React.FC<HeaderProps> = ({
   const handleOpenAuth = () => {
     setModalTenant(tenantId);
     setModalWorkspace(workspaceId);
+    setModalActor(actorId);
     setModalToken(authToken);
     setShowAuthModal(true);
   };
 
   const handleSaveAuth = () => {
-    onSaveAuthConfig(modalTenant.trim(), modalWorkspace.trim(), modalToken.trim());
+    onSaveAuthConfig(modalTenant.trim(), modalWorkspace.trim(), modalActor.trim(), modalToken.trim());
     setShowAuthModal(false);
   };
 
@@ -104,12 +108,14 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="text-xs text-zinc-400">AgentOps & C2</span>
             <button
               onClick={handleOpenAuth}
-              title="Click to configure Tenant ID, Workspace ID, and Bearer Token"
+              title="Click to configure Tenant ID, Workspace ID, Actor ID, and Bearer Token"
               className="ml-2 flex items-center gap-1.5 rounded-full bg-zinc-900 hover:bg-zinc-800 px-2.5 py-0.5 text-[11px] font-medium text-zinc-300 border border-zinc-700/80 transition-colors cursor-pointer"
             >
               <span className="font-mono text-zinc-400">{tenantId}</span>
               <span className="text-zinc-600">/</span>
-              <span className="font-mono text-white">{workspaceId}</span>
+              <span className="font-mono text-zinc-300">{workspaceId}</span>
+              <span className="text-zinc-600">/</span>
+              <span className="font-mono text-white">{actorId}</span>
               {authToken ? (
                 <Lock className="h-3 w-3 text-emerald-400 ml-0.5" />
               ) : (
@@ -283,6 +289,19 @@ export const Header: React.FC<HeaderProps> = ({
                   value={modalWorkspace}
                   onChange={(e) => setModalWorkspace(e.target.value)}
                   placeholder="e.g. prod-eu"
+                  className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:border-emerald-500 focus:outline-hidden"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-zinc-300 mb-1.5">
+                  Operator / Actor Identifier
+                </label>
+                <input
+                  type="text"
+                  value={modalActor}
+                  onChange={(e) => setModalActor(e.target.value)}
+                  placeholder="e.g. operator_admin or sre_alice"
                   className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:border-emerald-500 focus:outline-hidden"
                 />
               </div>

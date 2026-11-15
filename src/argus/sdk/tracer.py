@@ -57,7 +57,7 @@ class ArgusTracer:
     @classmethod
     def remote(
         cls,
-        base_url: str = "http://localhost:8000",
+        base_url: str | None = None,
         *,
         auth_token: str | None = None,
         redactor: EdgeRedactor | None = None,

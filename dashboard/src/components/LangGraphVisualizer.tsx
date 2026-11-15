@@ -25,12 +25,14 @@ interface LangGraphVisualizerProps {
   spans: ArgusSpan[];
   selectedSpan: ArgusSpan | null;
   onSelectSpan: (span: ArgusSpan) => void;
+  authFetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 }
 
 export const LangGraphVisualizer: React.FC<LangGraphVisualizerProps> = ({
   spans,
   selectedSpan,
   onSelectSpan,
+  authFetch,
 }) => {
   const [displayMode, setDisplayMode] = useState<"DAG" | "WATERFALL">("DAG");
   const [inspectorTab, setInspectorTab] = useState<"PAYLOADS" | "ATTRIBUTES">("PAYLOADS");
@@ -43,7 +45,8 @@ export const LangGraphVisualizer: React.FC<LangGraphVisualizerProps> = ({
     if (!sessionId) return;
     setIsExporting(true);
     try {
-      const res = await fetch(
+      const fetchFn = authFetch || fetch;
+      const res = await fetchFn(
         `/api/v1/telemetry/sessions/${sessionId}/phoenix?format=${format}&eval_type=${evalType}`
       );
       if (res.ok) {
