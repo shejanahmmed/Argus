@@ -22,7 +22,10 @@ from argus.core.schemas import (
     AuditVerificationResult,
     CheckpointRecord,
     CircuitBreakerVerdict,
+    FleetROISummary,
     PendingToolCall,
+    TrajectoryEvaluationReport,
+    WorkflowROIAttribution,
 )
 from argus.core.tenancy import TenantContext
 
@@ -116,6 +119,10 @@ class ArgusC2Client:
             "POST", "/api/v1/telemetry/spans", json_body=payload
         )
         return res
+
+    async def sync_spans(self, spans: Sequence[ArgusSpan]) -> dict[str, Any]:
+        """Synchronize a batch of telemetry spans with the Control Plane."""
+        return await self.ingest_spans(spans)
 
     async def save_checkpoint(
         self,
@@ -262,3 +269,56 @@ class ArgusC2Client:
         query_str = "&".join(params)
         data = await self._request("GET", f"/api/v1/c2/audit-log?{query_str}")
         return AuditQueryResponse.model_validate(data)
+
+    async def get_session_roi(
+        self,
+        session_id: uuid.UUID,
+        *,
+        workflow_id: str = "wf_default",
+        assigned_business_value_usd: float = 100.0,
+        task_completed: bool | None = None,
+        infra_cost_usd: float | None = None,
+        c2_intervention_cost_usd: float | None = None,
+    ) -> WorkflowROIAttribution:
+        """Calculate token attribution, 4-bucket costs, and net ROI for a session."""
+        params: list[str] = [
+            f"workflow_id={workflow_id}",
+            f"assigned_business_value_usd={assigned_business_value_usd}",
+        ]
+        if task_completed is not None:
+            params.append(f"task_completed={'true' if task_completed else 'false'}")
+        if infra_cost_usd is not None:
+            params.append(f"infra_cost_usd={infra_cost_usd}")
+        if c2_intervention_cost_usd is not None:
+            params.append(f"c2_intervention_cost_usd={c2_intervention_cost_usd}")
+
+        path = f"/api/v1/attribution/roi/{session_id}?{'&'.join(params)}"
+        data = await self._request("GET", path)
+        return WorkflowROIAttribution.model_validate(data)
+
+    async def evaluate_trajectory(
+        self,
+        session_id: uuid.UUID,
+        *,
+        expected_tools: list[str] | None = None,
+        goal_keywords: list[str] | None = None,
+    ) -> TrajectoryEvaluationReport:
+        """Execute deterministic trajectory evaluation analyzing tools, keywords, and goals."""
+        payload = {
+            "expected_tools": expected_tools or [],
+            "goal_keywords": goal_keywords or [],
+        }
+        data = await self._request(
+            "POST", f"/api/v1/attribution/evaluate/{session_id}", json_body=payload
+        )
+        return TrajectoryEvaluationReport.model_validate(data)
+
+    async def get_fleet_roi(
+        self,
+        *,
+        default_task_value_usd: float = 100.0,
+    ) -> FleetROISummary:
+        """Retrieve aggregated fleet-wide ROI attribution, spend, and performance statistics."""
+        path = f"/api/v1/attribution/fleet-roi?default_task_value_usd={default_task_value_usd}"
+        data = await self._request("GET", path)
+        return FleetROISummary.model_validate(data)

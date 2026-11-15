@@ -223,8 +223,9 @@ def test_workflow_roi_attribution_calculation() -> None:
         assigned_business_value_usd=2.20,
     )
     assert roi.total_cost_usd == pytest.approx(0.055)
-    assert roi.net_roi_usd == pytest.approx(2.145)
-    assert roi.roi_percentage == pytest.approx(3900.0)
+    assert roi.realized_business_value_usd == pytest.approx(2.09)
+    assert roi.net_roi_usd == pytest.approx(2.035)
+    assert roi.roi_percentage == pytest.approx(3700.0)
 
 
 def test_audit_log_entry_tamper_detection() -> None:

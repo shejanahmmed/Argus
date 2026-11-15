@@ -81,11 +81,19 @@ export const RoiAndBenchmarks: React.FC<RoiAndBenchmarksProps> = ({
                   <div className="text-white font-semibold text-base">
                     ${roi.assigned_business_value_usd.toFixed(2)}
                   </div>
+                  {roi.realized_business_value_usd !== undefined && (
+                    <div className="text-[10px] text-zinc-400 mt-1">
+                      Realized: <span className="text-emerald-400 font-mono">${roi.realized_business_value_usd.toFixed(2)}</span>
+                    </div>
+                  )}
                 </div>
                 <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
-                  <div className="text-zinc-500 text-[11px] mb-0.5">Total Token & Tool Cost</div>
+                  <div className="text-zinc-500 text-[11px] mb-0.5">Total Execution Cost</div>
                   <div className="text-zinc-200 font-semibold text-base font-mono">
                     ${roi.total_cost_usd.toFixed(4)}
+                  </div>
+                  <div className="text-[10px] text-zinc-400 mt-1">
+                    4-category FinOps total
                   </div>
                 </div>
                 <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
@@ -97,6 +105,9 @@ export const RoiAndBenchmarks: React.FC<RoiAndBenchmarksProps> = ({
                   >
                     ${roi.net_roi_usd.toFixed(2)}
                   </div>
+                  <div className="text-[10px] text-zinc-400 mt-1 font-mono">
+                    {roi.roi_percentage >= 0 ? `+${roi.roi_percentage.toFixed(1)}%` : `${roi.roi_percentage.toFixed(1)}%`} ROI
+                  </div>
                 </div>
                 <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
                   <div className="text-zinc-500 text-[11px] mb-0.5">Wasted Loop Burn</div>
@@ -107,10 +118,13 @@ export const RoiAndBenchmarks: React.FC<RoiAndBenchmarksProps> = ({
                   >
                     ${roi.wasted_loop_cost_usd.toFixed(4)}
                   </div>
+                  <div className="text-[10px] text-zinc-400 mt-1">
+                    {roi.wasted_loop_cost_usd > 0 ? "Arrested by circuit breaker" : "Zero loop waste"}
+                  </div>
                 </div>
               </div>
 
-              {/* Trajectory Scores */}
+              {/* Trajectory Scores & Operational Telemetry */}
               <div className="grid grid-cols-2 gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-xs">
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-400 flex items-center gap-1.5">
@@ -128,25 +142,60 @@ export const RoiAndBenchmarks: React.FC<RoiAndBenchmarksProps> = ({
                     {(roi.tool_correctness_score * 100).toFixed(0)}%
                   </span>
                 </div>
+                {roi.wall_clock_duration_seconds !== undefined && (
+                  <div className="col-span-2 pt-2 border-t border-zinc-800/80 flex justify-between text-[11px] text-zinc-500 font-mono">
+                    <span>Compute: {roi.wall_clock_duration_seconds.toFixed(1)}s</span>
+                    <span>C2 Interventions: {roi.c2_interventions_count ?? 0}</span>
+                    <span>Spans: {roi.total_spans_evaluated ?? 0}</span>
+                  </div>
+                )}
               </div>
 
-              {/* Line items */}
+              {/* 4 Granular Cost Categories Line Items */}
               <div className="border-t border-zinc-800 pt-3 text-xs space-y-1.5 text-zinc-400 font-mono">
                 <div className="flex justify-between">
                   <span className="text-zinc-500">LLM Inference:</span>
-                  <span className="text-zinc-300">${roi.llm_cost_usd.toFixed(4)}</span>
+                  <span className="text-zinc-300">
+                    ${roi.llm_cost_usd.toFixed(4)}
+                    {roi.total_cost_usd > 0 && (
+                      <span className="text-zinc-500 text-[10px] ml-1.5">
+                        ({((roi.llm_cost_usd / roi.total_cost_usd) * 100).toFixed(1)}%)
+                      </span>
+                    )}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-zinc-500">MCP Tool Calls:</span>
-                  <span className="text-zinc-300">${roi.tool_cost_usd.toFixed(4)}</span>
+                  <span className="text-zinc-300">
+                    ${roi.tool_cost_usd.toFixed(4)}
+                    {roi.total_cost_usd > 0 && (
+                      <span className="text-zinc-500 text-[10px] ml-1.5">
+                        ({((roi.tool_cost_usd / roi.total_cost_usd) * 100).toFixed(1)}%)
+                      </span>
+                    )}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-zinc-500">Container Infra:</span>
-                  <span className="text-zinc-300">${roi.infra_cost_usd.toFixed(4)}</span>
+                  <span className="text-zinc-300">
+                    ${roi.infra_cost_usd.toFixed(4)}
+                    {roi.total_cost_usd > 0 && (
+                      <span className="text-zinc-500 text-[10px] ml-1.5">
+                        ({((roi.infra_cost_usd / roi.total_cost_usd) * 100).toFixed(1)}%)
+                      </span>
+                    )}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-zinc-500">C2 Operator Overhead:</span>
-                  <span className="text-zinc-300">${roi.c2_intervention_cost_usd.toFixed(4)}</span>
+                  <span className="text-zinc-300">
+                    ${roi.c2_intervention_cost_usd.toFixed(4)}
+                    {roi.total_cost_usd > 0 && (
+                      <span className="text-zinc-500 text-[10px] ml-1.5">
+                        ({((roi.c2_intervention_cost_usd / roi.total_cost_usd) * 100).toFixed(1)}%)
+                      </span>
+                    )}
+                  </span>
                 </div>
               </div>
             </div>

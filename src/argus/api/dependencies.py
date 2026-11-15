@@ -115,8 +115,16 @@ class AppContainer:
             max_ttl_seconds=self.settings.lease_max_ttl_seconds,
         )
         self.tool_override_engine = ToolOverrideEngine()
-        self.roi_engine = ROIEngine(trace_store=self.trace_store)
         self.trajectory_evaluator = TrajectoryEvaluator()
+        self.roi_engine = ROIEngine(
+            trace_store=self.trace_store,
+            audit_store=self.audit_store,
+            control_store=self.control_store,
+            evaluator=self.trajectory_evaluator,
+            default_hourly_infra_rate_usd=self.settings.roi_default_hourly_infra_rate_usd,
+            default_fixed_intervention_cost_usd=self.settings.roi_default_fixed_intervention_cost_usd,
+            default_tool_execution_cost_usd=self.settings.roi_default_tool_execution_cost_usd,
+        )
         self.benchmark_analyzer = HuggingFaceBenchmarkAnalyzer()
         self.phoenix_bridge = ArizePhoenixBridge()
 

@@ -139,6 +139,7 @@ export interface WorkflowROIAttribution {
   session_id: string;
   workflow_id: string;
   assigned_business_value_usd: number;
+  realized_business_value_usd?: number;
   llm_cost_usd: number;
   tool_cost_usd: number;
   infra_cost_usd: number;
@@ -150,6 +151,45 @@ export interface WorkflowROIAttribution {
   task_completed: boolean;
   task_completion_score: number;
   tool_correctness_score: number;
+  wall_clock_duration_seconds?: number;
+  c2_interventions_count?: number;
+  total_spans_evaluated?: number;
+}
+
+export interface TrajectoryEvaluationReport {
+  session_id: string;
+  tenant_id: string;
+  workspace_id: string;
+  total_steps: number;
+  llm_steps: number;
+  tool_steps: number;
+  expected_tools: string[];
+  used_tools: string[];
+  matched_tools: string[];
+  missing_tools: string[];
+  unexpected_tools: string[];
+  tool_correctness_score: number;
+  goal_keywords: string[];
+  matched_keywords: string[];
+  task_completed: boolean;
+  task_completion_score: number;
+  fatal_errors_detected: string[];
+  diagnostic_summary: string;
+}
+
+export interface FleetROISummary {
+  tenant_id: string;
+  workspace_id: string;
+  total_sessions: number;
+  completed_sessions: number;
+  total_fleet_spend_usd: number;
+  total_realized_value_usd: number;
+  net_fleet_roi_usd: number;
+  fleet_roi_percentage: number;
+  total_wasted_loop_cost_usd: number;
+  average_completion_score: number;
+  average_tool_score: number;
+  sessions: WorkflowROIAttribution[];
 }
 
 export interface ModelBenchmarkEntry {

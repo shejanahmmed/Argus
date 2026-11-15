@@ -437,8 +437,14 @@ class WorkflowROIAttribution(BaseModel):
     total_cost_usd: float = Field(ge=0.0)
 
     assigned_business_value_usd: float = Field(ge=0.0)
+    realized_business_value_usd: float = Field(default=0.0, ge=0.0)
     net_roi_usd: float
     roi_percentage: float
+
+    # Operational metrics
+    wall_clock_duration_seconds: float = Field(default=0.0, ge=0.0)
+    c2_interventions_count: int = Field(default=0, ge=0)
+    total_spans_evaluated: int = Field(default=0, ge=0)
 
     @classmethod
     def calculate(
@@ -457,13 +463,20 @@ class WorkflowROIAttribution(BaseModel):
         c2_intervention_cost_usd: float = 0.0,
         wasted_loop_cost_usd: float = 0.0,
         assigned_business_value_usd: float,
+        wall_clock_duration_seconds: float = 0.0,
+        c2_interventions_count: int = 0,
+        total_spans_evaluated: int = 0,
     ) -> WorkflowROIAttribution:
         """Compute deterministic financial ROI from component cost logs and completion status."""
         total_cost = round(
             llm_cost_usd + tool_cost_usd + infra_cost_usd + c2_intervention_cost_usd,
             8,
         )
-        realized_value = assigned_business_value_usd if task_completed else 0.0
+        realized_value = (
+            round(assigned_business_value_usd * task_completion_score, 8)
+            if task_completed
+            else 0.0
+        )
         net_roi = round(realized_value - total_cost, 8)
         roi_pct = round((net_roi / total_cost) * 100.0, 4) if total_cost > 0.0 else 0.0
 
@@ -482,9 +495,61 @@ class WorkflowROIAttribution(BaseModel):
             wasted_loop_cost_usd=wasted_loop_cost_usd,
             total_cost_usd=total_cost,
             assigned_business_value_usd=assigned_business_value_usd,
+            realized_business_value_usd=realized_value,
             net_roi_usd=net_roi,
             roi_percentage=roi_pct,
+            wall_clock_duration_seconds=wall_clock_duration_seconds,
+            c2_interventions_count=c2_interventions_count,
+            total_spans_evaluated=total_spans_evaluated,
         )
+
+
+class TrajectoryEvaluationReport(BaseModel):
+    """Deterministic evaluation report for an autonomous agent execution trajectory."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    session_id: UUID7
+    tenant_id: str = Field(min_length=1, max_length=128)
+    workspace_id: str = Field(min_length=1, max_length=128)
+    total_steps: int = Field(ge=0)
+    llm_steps: int = Field(default=0, ge=0)
+    tool_steps: int = Field(default=0, ge=0)
+
+    # Tool selection metrics
+    expected_tools: list[str] = Field(default_factory=list)
+    used_tools: list[str] = Field(default_factory=list)
+    matched_tools: list[str] = Field(default_factory=list)
+    missing_tools: list[str] = Field(default_factory=list)
+    unexpected_tools: list[str] = Field(default_factory=list)
+    tool_correctness_score: float = Field(ge=0.0, le=1.0)
+
+    # Task completion metrics
+    goal_keywords: list[str] = Field(default_factory=list)
+    matched_keywords: list[str] = Field(default_factory=list)
+    task_completed: bool
+    task_completion_score: float = Field(ge=0.0, le=1.0)
+    fatal_errors_detected: list[str] = Field(default_factory=list)
+    diagnostic_summary: str = Field(default="")
+
+
+class FleetROISummary(BaseModel):
+    """Aggregated financial ROI and performance metrics across the governed agent fleet."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    tenant_id: str = Field(min_length=1, max_length=128)
+    workspace_id: str = Field(min_length=1, max_length=128)
+    total_sessions: int = Field(ge=0)
+    completed_sessions: int = Field(ge=0)
+    total_fleet_spend_usd: float = Field(ge=0.0)
+    total_realized_value_usd: float = Field(ge=0.0)
+    net_fleet_roi_usd: float
+    fleet_roi_percentage: float
+    total_wasted_loop_cost_usd: float = Field(default=0.0, ge=0.0)
+    average_completion_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    average_tool_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    sessions: list[WorkflowROIAttribution] = Field(default_factory=list)
 
 
 class AuditLogEntry(BaseModel):

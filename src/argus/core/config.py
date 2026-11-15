@@ -141,6 +141,22 @@ class ArgusSettings(BaseModel):
         le=3600.0,
         description="Interval between background dead-man lease reaper sweeps in seconds.",
     )
+    # Financial FinOps & ROI Engine Settings
+    roi_default_hourly_infra_rate_usd: float = Field(
+        default=0.04,
+        ge=0.0,
+        description="Default hourly container compute rate in USD (default: $0.04/hr).",
+    )
+    roi_default_fixed_intervention_cost_usd: float = Field(
+        default=0.50,
+        ge=0.0,
+        description="Default cost in USD per human C2 operator intervention.",
+    )
+    roi_default_tool_execution_cost_usd: float = Field(
+        default=0.0005,
+        ge=0.0,
+        description="Default cost in USD per tool execution when not specified in attributes.",
+    )
 
     @classmethod
     def from_env(cls) -> ArgusSettings:
@@ -228,6 +244,13 @@ class ArgusSettings(BaseModel):
             lease_min_ttl_seconds=_get_float("ARGUS_LEASE_MIN_TTL", 5.0),
             lease_auto_reaper_enabled=lease_auto_reap,
             lease_reap_interval_seconds=_get_float("ARGUS_LEASE_REAP_INTERVAL", 30.0),
+            roi_default_hourly_infra_rate_usd=_get_float("ARGUS_ROI_HOURLY_INFRA_RATE", 0.04),
+            roi_default_fixed_intervention_cost_usd=_get_float(
+                "ARGUS_ROI_INTERVENTION_COST", 0.50
+            ),
+            roi_default_tool_execution_cost_usd=_get_float(
+                "ARGUS_ROI_TOOL_EXECUTION_COST", 0.0005
+            ),
         )
 
     @model_validator(mode="after")

@@ -1296,3 +1296,120 @@ async def test_audit_ledger_verification_and_export_lifecycle(
         assert query_res.entries[0].event_type == "C2_PAUSE"
 
 
+@pytest.mark.asyncio
+async def test_attribution_roi_evaluation_and_fleet_summary_lifecycle(
+    auth_headers: dict[str, str],
+) -> None:
+    session_id = new_uuid7()
+    ctx = TenantContext(
+        tenant_id=auth_headers["X-Tenant-ID"],
+        workspace_id=auth_headers["X-Workspace-ID"],
+        actor_id=auth_headers["X-Actor-ID"],
+        role=Role(auth_headers["X-Role"]),
+    )
+    t0 = utc_now()
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        sdk = ArgusC2Client(ctx, client=client)
+
+        # 1. Register session
+        await sdk.register_session(
+            session_id=session_id,
+            workflow_id="wf_roi_integration",
+            agent_name="roi_agent",
+            framework=AgentFramework.LANGGRAPH,
+        )
+
+        # 2. Ingest spans: LLM span, Tool span with dynamic cost, and Root deliverable span
+        span_id1 = new_uuid7()
+        span_id2 = new_uuid7()
+        span_id3 = new_uuid7()
+
+        s1 = ArgusSpan(
+            tenant_id=ctx.tenant_id,
+            workspace_id=ctx.workspace_id,
+            session_id=session_id,
+            trace_id=new_uuid7(),
+            span_id=span_id1,
+            parent_span_id=None,
+            dotted_order=build_dotted_order(t0, span_id1),
+            name="llm_query",
+            span_kind=SpanKind.LLM,
+            operation_name=OperationName.CHAT,
+            started_at=t0,
+            cost_usd=0.03,
+            attributes={"circuit_breaker_flag": "LOOP_WARNING"},
+        )
+        s2 = ArgusSpan(
+            tenant_id=ctx.tenant_id,
+            workspace_id=ctx.workspace_id,
+            session_id=session_id,
+            trace_id=new_uuid7(),
+            span_id=span_id2,
+            parent_span_id=None,
+            dotted_order=build_dotted_order(t0, span_id2),
+            name="tool:fetch_data",
+            span_kind=SpanKind.TOOL,
+            operation_name=OperationName.EXECUTE_TOOL,
+            started_at=t0,
+            cost_usd=0.0,
+            attributes={"mcp.tool.cost_usd": "0.0025"},
+        )
+        s3 = ArgusSpan(
+            tenant_id=ctx.tenant_id,
+            workspace_id=ctx.workspace_id,
+            session_id=session_id,
+            trace_id=new_uuid7(),
+            span_id=span_id3,
+            parent_span_id=None,
+            dotted_order=build_dotted_order(t0, span_id3),
+            name="agent_main",
+            span_kind=SpanKind.AGENT,
+            operation_name=OperationName.INVOKE_AGENT,
+            started_at=t0,
+            output_payload={"status": "Data fetched and deliverable completed successfully."},
+        )
+        await sdk.sync_spans([s1, s2, s3])
+
+        # 3. Calculate session ROI via SDK
+        roi = await sdk.get_session_roi(
+            session_id=session_id,
+            workflow_id="wf_roi_integration",
+            assigned_business_value_usd=75.0,
+        )
+        assert roi.session_id == session_id
+        assert roi.llm_cost_usd == pytest.approx(0.03)
+        assert roi.tool_cost_usd == pytest.approx(0.0025)
+        assert roi.wasted_loop_cost_usd == pytest.approx(0.03)
+        assert roi.assigned_business_value_usd == 75.0
+        assert roi.task_completed is True
+        assert roi.realized_business_value_usd == pytest.approx(75.0)
+        assert roi.net_roi_usd > 74.0
+
+        # 4. Evaluate trajectory via SDK
+        report = await sdk.evaluate_trajectory(
+            session_id=session_id,
+            expected_tools=["fetch_data"],
+            goal_keywords=["deliverable", "completed"],
+        )
+        assert report.session_id == session_id
+        assert report.total_steps == 3
+        assert report.matched_tools == ["fetch_data"]
+        assert report.missing_tools == []
+        assert report.tool_correctness_score == 1.0
+        assert report.task_completed is True
+        assert report.task_completion_score == 1.0
+        assert report.fatal_errors_detected == []
+
+        # 5. Fetch Fleet ROI summary via SDK
+        fleet = await sdk.get_fleet_roi(default_task_value_usd=75.0)
+        assert fleet.total_sessions >= 1
+        assert fleet.completed_sessions >= 1
+        assert fleet.total_fleet_spend_usd > 0.0
+        assert fleet.total_realized_value_usd >= 75.0
+        assert fleet.net_fleet_roi_usd > 0.0
+        assert len(fleet.sessions) >= 1
+
+
