@@ -47,4 +47,8 @@ class ArgusAutoGPTTracker:
             input_payload={"thought": thought, "plan": plan or []},
         ) as builder:
             builder.set_attribute("autogpt.cycle_number", cycle_number)
-            yield builder
+            try:
+                yield builder
+            except BaseException as err:
+                builder.record_error(str(err))
+                raise

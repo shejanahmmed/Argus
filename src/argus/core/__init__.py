@@ -18,6 +18,11 @@ from argus.core.ids import (
     parse_dotted_order,
     utc_now,
 )
+from argus.core.pricing import (
+    MODEL_PRICING_CATALOG,
+    ModelPriceRate,
+    estimate_token_cost_usd,
+)
 from argus.core.schemas import (
     GENESIS_AUDIT_HASH,
     VALID_SESSION_TRANSITIONS,
@@ -46,6 +51,7 @@ from argus.core.tenancy import Role, TenantContext
 
 __all__ = [
     "GENESIS_AUDIT_HASH",
+    "MODEL_PRICING_CATALOG",
     "VALID_SESSION_TRANSITIONS",
     "AgentFramework",
     "AgentSession",
@@ -68,6 +74,7 @@ __all__ = [
     "IssueTokenRequest",
     "IssueTokenResponse",
     "JsonPatchOp",
+    "ModelPriceRate",
     "OperationName",
     "PendingToolCall",
     "Role",
@@ -79,6 +86,7 @@ __all__ = [
     "WorkflowROIAttribution",
     "build_dotted_order",
     "compute_canonical_sha256",
+    "estimate_token_cost_usd",
     "format_dotted_segment",
     "new_uuid7",
     "parse_dotted_order",

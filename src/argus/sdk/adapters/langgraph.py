@@ -66,6 +66,20 @@ class ArgusLangGraphCallbackHandler:
             builder.set_output(outputs)
             await cm.__aexit__(None, None, None)
 
+    async def on_chain_error(
+        self,
+        error: BaseException,
+        *,
+        run_id: uuid.UUID,
+        **kwargs: Any,
+    ) -> None:
+        """Called when a LangGraph node or chain execution fails."""
+        record = self._active_spans.pop(str(run_id), None)
+        if record is not None:
+            cm, builder = record
+            builder.record_error(str(error))
+            await cm.__aexit__(type(error), error, error.__traceback__)
+
     async def on_tool_start(
         self,
         serialized: dict[str, Any],
@@ -102,6 +116,20 @@ class ArgusLangGraphCallbackHandler:
             cm, builder = record
             builder.set_output({"output": output})
             await cm.__aexit__(None, None, None)
+
+    async def on_tool_error(
+        self,
+        error: BaseException,
+        *,
+        run_id: uuid.UUID,
+        **kwargs: Any,
+    ) -> None:
+        """Called when tool execution fails."""
+        record = self._active_spans.pop(str(run_id), None)
+        if record is not None:
+            cm, builder = record
+            builder.record_error(str(error))
+            await cm.__aexit__(type(error), error, error.__traceback__)
 
     async def on_llm_start(
         self,
@@ -146,3 +174,17 @@ class ArgusLangGraphCallbackHandler:
             )
             builder.set_output(response)
             await cm.__aexit__(None, None, None)
+
+    async def on_llm_error(
+        self,
+        error: BaseException,
+        *,
+        run_id: uuid.UUID,
+        **kwargs: Any,
+    ) -> None:
+        """Called when LLM generation fails."""
+        record = self._active_spans.pop(str(run_id), None)
+        if record is not None:
+            cm, builder = record
+            builder.record_error(str(error))
+            await cm.__aexit__(type(error), error, error.__traceback__)

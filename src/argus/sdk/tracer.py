@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, ParamSpec, TypeVar
 
 from argus.core.ids import build_dotted_order, new_uuid7, utc_now
+from argus.core.pricing import estimate_token_cost_usd
 from argus.core.schemas import (
     AgentFramework,
     ArgusSpan,
@@ -53,6 +54,27 @@ class ArgusTracer:
         self._default_framework = default_framework
         self._spool_path = Path(spool_path) if spool_path is not None else None
 
+    @classmethod
+    def remote(
+        cls,
+        base_url: str = "http://localhost:8000",
+        *,
+        auth_token: str | None = None,
+        redactor: EdgeRedactor | None = None,
+        default_framework: AgentFramework = AgentFramework.CUSTOM,
+        spool_path: Path | str | None = Path(".argus_logs/spool_spans.jsonl"),
+    ) -> ArgusTracer:
+        """Construct an ArgusTracer configured for remote HTTP telemetry transport."""
+        from argus.adapters_infra.http_store import HttpTraceStore
+
+        http_store = HttpTraceStore(base_url=base_url, auth_token=auth_token)
+        return cls(
+            trace_store=http_store,
+            redactor=redactor,
+            default_framework=default_framework,
+            spool_path=spool_path,
+        )
+
     def _spool_failed_span(self, span: ArgusSpan) -> None:
         """Fail-open fallback: write span to local JSONL spool so agent runtime never crashes."""
         if self._spool_path is None:
@@ -63,6 +85,51 @@ class ArgusTracer:
                 handle.write(span.model_dump_json() + "\n")
         except Exception:
             pass
+
+    async def flush_spool(self, ctx: TenantContext) -> int:
+        """Replay fail-open spooled spans from local disk back to the TraceStore."""
+        if self._spool_path is None or not self._spool_path.exists():
+            return 0
+
+        spans_to_replay: list[ArgusSpan] = []
+        try:
+            with self._spool_path.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    raw_line = line.strip()
+                    if not raw_line:
+                        continue
+                    try:
+                        spans_to_replay.append(ArgusSpan.model_validate_json(raw_line))
+                    except Exception:
+                        continue
+
+            if not spans_to_replay:
+                return 0
+
+            matching = [
+                s
+                for s in spans_to_replay
+                if s.tenant_id == ctx.tenant_id and s.workspace_id == ctx.workspace_id
+            ]
+            other = [
+                s
+                for s in spans_to_replay
+                if not (s.tenant_id == ctx.tenant_id and s.workspace_id == ctx.workspace_id)
+            ]
+
+            if matching:
+                await self._store.append_spans(ctx, matching)
+
+            if other:
+                with self._spool_path.open("w", encoding="utf-8") as handle:
+                    for s in other:
+                        handle.write(s.model_dump_json() + "\n")
+            else:
+                self._spool_path.unlink(missing_ok=True)
+
+            return len(matching)
+        except Exception:
+            return 0
 
     @asynccontextmanager
     async def start_span(
@@ -242,6 +309,16 @@ class SpanBuilder:
         """Set the output dictionary of the span."""
         self.output_payload = output
 
+    def record_error(self, error: Exception | str) -> None:
+        """Record an execution error on this span."""
+        err_msg = str(error)
+        self.attributes["error"] = True
+        self.attributes["error.message"] = err_msg
+        if not self.output_payload:
+            self.output_payload = {"error": err_msg}
+        else:
+            self.output_payload["error"] = err_msg
+
     def record_tokens(
         self,
         *,
@@ -250,10 +327,21 @@ class SpanBuilder:
         cost_usd: float = 0.0,
         ttft_ms: float | None = None,
     ) -> None:
-        """Record model inference metrics."""
-        self.prompt_tokens += max(0, prompt_tokens)
-        self.completion_tokens += max(0, completion_tokens)
-        self.cost_usd += max(0.0, cost_usd)
+        """Record model inference metrics, auto-estimating cost if unspecified."""
+        p_tok = max(0, prompt_tokens)
+        c_tok = max(0, completion_tokens)
+        self.prompt_tokens += p_tok
+        self.completion_tokens += c_tok
+
+        if cost_usd > 0.0:
+            self.cost_usd += cost_usd
+        elif p_tok > 0 or c_tok > 0:
+            self.cost_usd += estimate_token_cost_usd(
+                self.model_name,
+                prompt_tokens=p_tok,
+                completion_tokens=c_tok,
+            )
+
         if ttft_ms is not None:
             self.ttft_ms = max(0.0, ttft_ms)
 

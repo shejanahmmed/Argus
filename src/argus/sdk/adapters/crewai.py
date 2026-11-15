@@ -68,3 +68,19 @@ class ArgusCrewAIAdapter:
             builder.set_output({"output": output})
             builder.record_tokens(completion_tokens=tokens_used, cost_usd=cost_usd)
             await cm.__aexit__(None, None, None)
+
+    async def on_task_error(
+        self,
+        *,
+        task_id: str,
+        error: BaseException | str,
+    ) -> None:
+        """Called when an agent task execution fails."""
+        record = self._active_tasks.pop(task_id, None)
+        if record is not None:
+            cm, builder = record
+            builder.record_error(str(error))
+            exc_type = type(error) if isinstance(error, BaseException) else RuntimeError
+            exc_val = error if isinstance(error, BaseException) else RuntimeError(str(error))
+            exc_tb = error.__traceback__ if isinstance(error, BaseException) else None
+            await cm.__aexit__(exc_type, exc_val, exc_tb)

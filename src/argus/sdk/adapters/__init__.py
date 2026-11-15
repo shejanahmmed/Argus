@@ -2,10 +2,12 @@
 
 from argus.sdk.adapters.autogpt import ArgusAutoGPTTracker
 from argus.sdk.adapters.crewai import ArgusCrewAIAdapter
+from argus.sdk.adapters.langchain import ArgusLangChainCallbackHandler
 from argus.sdk.adapters.langgraph import ArgusLangGraphCallbackHandler
 
 __all__ = [
     "ArgusAutoGPTTracker",
     "ArgusCrewAIAdapter",
+    "ArgusLangChainCallbackHandler",
     "ArgusLangGraphCallbackHandler",
 ]

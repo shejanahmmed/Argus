@@ -92,6 +92,7 @@ class AgentFramework(StrEnum):
     """Supported autonomous agent and orchestration frameworks."""
 
     LANGGRAPH = "langgraph"
+    LANGCHAIN = "langchain"
     LCEL = "lcel"
     CREWAI = "crewai"
     AUTOGPT = "autogpt"

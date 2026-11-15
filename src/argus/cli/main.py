@@ -65,6 +65,34 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional custom HMAC secret key (defaults to ARGUS_AUTH_SECRET environment variable)",
     )
 
+    # 'telemetry' command group
+    telemetry_parser = subparsers.add_parser("telemetry", help="Telemetry and spool management")
+    telemetry_sub = telemetry_parser.add_subparsers(
+        dest="telemetry_action", help="Telemetry action"
+    )
+
+    # 'telemetry flush-spool'
+    flush_parser = telemetry_sub.add_parser(
+        "flush-spool", help="Replay locally spooled fail-open spans to Argus"
+    )
+    flush_parser.add_argument(
+        "--tenant", "-t", required=True, help="Target tenant identifier (e.g. 'acme-corp')"
+    )
+    flush_parser.add_argument(
+        "--workspace", "-w", required=True, help="Target workspace identifier (e.g. 'prod-eu')"
+    )
+    flush_parser.add_argument(
+        "--spool-path",
+        default=".argus_logs/spool_spans.jsonl",
+        help="Path to spool file (default: .argus_logs/spool_spans.jsonl)",
+    )
+    flush_parser.add_argument(
+        "--url", default="http://localhost:8000", help="Argus Control Plane base URL"
+    )
+    flush_parser.add_argument(
+        "--token", default=None, help="Optional Argus HMAC Bearer token"
+    )
+
     # 'version' command
     subparsers.add_parser("version", help="Print Argus version information")
 
@@ -103,6 +131,28 @@ def handle_issue_token(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_flush_spool(args: argparse.Namespace) -> int:
+    """Execute spool replay against the specified Argus endpoint."""
+    import asyncio
+
+    from argus.sdk.tracer import ArgusTracer
+
+    ctx = TenantContext(
+        tenant_id=args.tenant,
+        workspace_id=args.workspace,
+        actor_id="cli_spool_replayer",
+        role=Role.OPERATOR,
+    )
+    tracer = ArgusTracer.remote(
+        base_url=args.url,
+        auth_token=args.token,
+        spool_path=args.spool_path,
+    )
+    count = asyncio.run(tracer.flush_spool(ctx))
+    sys.stdout.write(f"Successfully replayed {count} spooled spans to {args.url}\n")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI execution entrypoint."""
     parser = build_parser()
@@ -112,6 +162,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.auth_action == "issue-token":
             return handle_issue_token(args)
         parser.parse_args(["auth", "--help"])
+        return 1
+
+    if args.subcommand == "telemetry":
+        if args.telemetry_action == "flush-spool":
+            return handle_flush_spool(args)
+        parser.parse_args(["telemetry", "--help"])
         return 1
 
     if args.subcommand == "version":

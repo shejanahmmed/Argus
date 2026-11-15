@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from argus.core.ids import build_dotted_order, new_uuid7, utc_now
+from argus.core.pricing import estimate_token_cost_usd
 from argus.core.schemas import (
     AgentFramework,
     ArgusSpan,
@@ -17,6 +18,7 @@ from argus.core.schemas import (
     SpanKind,
 )
 from argus.core.tenancy import TenantContext
+from argus.security.redactor import EdgeRedactor
 
 # Mapping from external OpenInference / OTel span kinds to Argus SpanKind
 _SPAN_KIND_MAP: dict[str, SpanKind] = {
@@ -32,6 +34,9 @@ _SPAN_KIND_MAP: dict[str, SpanKind] = {
 
 class OtlpSpanIngestor:
     """Ingestor normalizing standard OpenTelemetry / OpenInference JSON records."""
+
+    def __init__(self, redactor: EdgeRedactor | None = None) -> None:
+        self._redactor = redactor or EdgeRedactor()
 
     def parse_span_batch(
         self,
@@ -90,17 +95,32 @@ class OtlpSpanIngestor:
             ).upper()
             span_kind = _SPAN_KIND_MAP.get(raw_kind, SpanKind.CHAIN)
 
-            str(
-                raw.get("gen_ai.operation.name")
-                or raw.get("operation_name")
-                or "invoke_agent"
-            )
             op_name = (
                 OperationName.CHAT
                 if span_kind == SpanKind.LLM
                 else OperationName.EXECUTE_TOOL
                 if span_kind == SpanKind.TOOL
                 else OperationName.INVOKE_AGENT
+            )
+
+            model_name = raw.get("llm.model_name")
+            p_tokens = int(raw.get("llm.token_count.prompt", 0))
+            c_tokens = int(raw.get("llm.token_count.completion", 0))
+
+            raw_cost = float(raw.get("cost_usd", 0.0))
+            if raw_cost <= 0.0 and (p_tokens > 0 or c_tokens > 0):
+                cost_usd = estimate_token_cost_usd(model_name, p_tokens, c_tokens)
+            else:
+                cost_usd = raw_cost
+
+            raw_in = raw.get("input_payload") or {"value": raw.get("input.value", "")}
+            raw_out = raw.get("output_payload") or {"value": raw.get("output.value", "")}
+
+            clean_in, in_redacted = self._redactor.scrub_payload(
+                raw_in if isinstance(raw_in, dict) else {"raw": str(raw_in)}
+            )
+            clean_out, out_redacted = self._redactor.scrub_payload(
+                raw_out if isinstance(raw_out, dict) else {"raw": str(raw_out)}
             )
 
             span = ArgusSpan(
@@ -115,15 +135,14 @@ class OtlpSpanIngestor:
                 span_kind=span_kind,
                 operation_name=op_name,
                 framework=AgentFramework.CUSTOM,
-                model_name=raw.get("llm.model_name"),
-                prompt_tokens=int(raw.get("llm.token_count.prompt", 0)),
-                completion_tokens=int(raw.get("llm.token_count.completion", 0)),
-                cost_usd=float(raw.get("cost_usd", 0.0)),
+                model_name=model_name,
+                prompt_tokens=p_tokens,
+                completion_tokens=c_tokens,
+                cost_usd=cost_usd,
                 latency_ms=float(raw.get("latency_ms", 0.0)),
-                input_payload=raw.get("input_payload")
-                or {"value": raw.get("input.value", "")},
-                output_payload=raw.get("output_payload")
-                or {"value": raw.get("output.value", "")},
+                input_payload=clean_in,
+                output_payload=clean_out,
+                redacted=bool(in_redacted or out_redacted),
                 started_at=started_at,
             )
             parsed_spans.append(span)
