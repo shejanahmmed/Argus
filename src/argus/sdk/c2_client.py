@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -27,6 +27,7 @@ from argus.core.schemas import (
     DowngradeRecommendation,
     FleetROISummary,
     ModelBenchmarkProfile,
+    OpenInferenceExportResponse,
     PendingToolCall,
     SessionDowngradeReport,
     TrajectoryEvaluationReport,
@@ -428,3 +429,60 @@ class ArgusC2Client:
         path = f"/api/v1/telemetry/cloudwatch/query?{'&'.join(params)}"
         data = await self._request("GET", path)
         return CloudWatchQueryResponse.model_validate(data)
+
+    async def export_phoenix_spans(
+        self,
+        session_id: uuid.UUID | str,
+        *,
+        eval_type: str = "all",
+    ) -> OpenInferenceExportResponse:
+        """Export session telemetry in Arize Phoenix format and evaluation datasets."""
+        path = f"/api/v1/telemetry/sessions/{session_id}/phoenix?eval_type={eval_type}&format=json"
+        data = await self._request("GET", path)
+        return OpenInferenceExportResponse.model_validate(data)
+
+    async def export_phoenix_csv(
+        self,
+        session_id: uuid.UUID | str,
+    ) -> str:
+        """Export session telemetry as RFC 4180 CSV matching px.Client().get_spans_dataframe()."""
+        path = f"/api/v1/telemetry/sessions/{session_id}/phoenix?format=csv"
+        if self._external_client is not None:
+            resp = await self._external_client.get(path, headers=self.headers)
+            resp.raise_for_status()
+            return resp.text
+        async with httpx.AsyncClient(timeout=self._timeout) as http:
+            url = f"{self._base_url}{path}"
+            resp = await http.get(url, headers=self.headers)
+            resp.raise_for_status()
+            return resp.text
+
+    async def get_phoenix_dataframe_records(
+        self,
+        session_id: uuid.UUID | str,
+    ) -> list[dict[str, Any]]:
+        """Retrieve tabular records directly suitable for pd.DataFrame(records)."""
+        export = await self.export_phoenix_spans(session_id)
+        return export.dataframe_records
+
+    async def ingest_openinference_spans(
+        self,
+        spans: list[dict[str, Any]],
+        *,
+        session_id: uuid.UUID | str | None = None,
+        workflow_id: str = "openinference_import",
+        agent_name: str = "external_agent",
+        framework: AgentFramework = AgentFramework.CUSTOM,
+    ) -> dict[str, Any]:
+        """Ingest raw OpenInference trace dictionaries into Argus."""
+        payload: dict[str, Any] = {
+            "spans": spans,
+            "workflow_id": workflow_id,
+            "agent_name": agent_name,
+            "framework": framework.value,
+        }
+        if session_id is not None:
+            payload["session_id"] = str(session_id)
+        data = await self._request("POST", "/api/v1/telemetry/openinference", json_body=payload)
+        return cast(dict[str, Any], data)
+

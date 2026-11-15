@@ -17,6 +17,7 @@ import {
   Cpu,
   ShieldCheck,
   Code2,
+  Download,
 } from "lucide-react";
 import { ArgusSpan } from "../types";
 
@@ -33,6 +34,37 @@ export const LangGraphVisualizer: React.FC<LangGraphVisualizerProps> = ({
 }) => {
   const [displayMode, setDisplayMode] = useState<"DAG" | "WATERFALL">("DAG");
   const [inspectorTab, setInspectorTab] = useState<"PAYLOADS" | "ATTRIBUTES">("PAYLOADS");
+  const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [showExportMenu, setShowExportMenu] = useState<boolean>(false);
+
+  const sessionId = selectedSpan?.session_id || (spans.length > 0 ? spans[0].session_id : null);
+
+  const handleExportPhoenix = async (format: "json" | "csv" = "json", evalType: string = "all") => {
+    if (!sessionId) return;
+    setIsExporting(true);
+    try {
+      const res = await fetch(
+        `/api/v1/telemetry/sessions/${sessionId}/phoenix?format=${format}&eval_type=${evalType}`
+      );
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download =
+          format === "csv"
+            ? `phoenix_spans_${sessionId}.csv`
+            : `phoenix_openinference_${sessionId}.json`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+      }
+    } catch (err) {
+      console.error("Failed to export Phoenix OpenInference data:", err);
+    } finally {
+      setIsExporting(false);
+      setShowExportMenu(false);
+    }
+  };
 
   const { nodes, edges, loopDetectedCount } = useMemo(() => {
     if (spans.length === 0) {
@@ -232,6 +264,49 @@ export const LangGraphVisualizer: React.FC<LangGraphVisualizerProps> = ({
               <span>Waterfall</span>
             </button>
           </div>
+
+          {sessionId && (
+            <div className="relative">
+              <button
+                onClick={() => setShowExportMenu(!showExportMenu)}
+                disabled={isExporting}
+                className="flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-xs font-medium text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors cursor-pointer disabled:opacity-50"
+                title="Export Arize Phoenix & OpenInference Telemetry"
+              >
+                <Download className="h-3.5 w-3.5 text-orange-400" />
+                <span>Export Phoenix</span>
+              </button>
+
+              {showExportMenu && (
+                <div className="absolute right-0 top-full mt-1.5 w-52 rounded-lg border border-zinc-800 bg-[#121215] p-1.5 shadow-xl z-50">
+                  <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500 border-b border-zinc-800/80 mb-1">
+                    Arize Phoenix OpenInference
+                  </div>
+                  <button
+                    onClick={() => handleExportPhoenix("csv", "all")}
+                    className="w-full flex items-center justify-between rounded px-2 py-1.5 text-xs text-left text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors cursor-pointer"
+                  >
+                    <span>DataFrame CSV</span>
+                    <span className="text-[10px] font-mono text-zinc-500">.csv</span>
+                  </button>
+                  <button
+                    onClick={() => handleExportPhoenix("json", "all")}
+                    className="w-full flex items-center justify-between rounded px-2 py-1.5 text-xs text-left text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors cursor-pointer"
+                  >
+                    <span>OpenInference JSON</span>
+                    <span className="text-[10px] font-mono text-zinc-500">.json</span>
+                  </button>
+                  <button
+                    onClick={() => handleExportPhoenix("json", "hallucination")}
+                    className="w-full flex items-center justify-between rounded px-2 py-1.5 text-xs text-left text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors cursor-pointer"
+                  >
+                    <span>Eval Datasets (Q&A/Tools)</span>
+                    <span className="text-[10px] font-mono text-amber-500">evals</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

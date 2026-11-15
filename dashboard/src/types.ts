@@ -296,3 +296,19 @@ export interface ReapLeasesResponse {
   reaped_count: number;
   dry_run: boolean;
 }
+
+export type EvalDatasetType = "all" | "hallucination" | "tool_calling" | "trajectory";
+
+export interface PhoenixEvalDatasets {
+  hallucination_records: Record<string, unknown>[];
+  tool_calling_records: Record<string, unknown>[];
+  trajectory_records: Record<string, unknown>[];
+}
+
+export interface OpenInferenceExportResponse {
+  session_id: string;
+  span_count: number;
+  openinference_spans: Record<string, unknown>[];
+  dataframe_records: Record<string, unknown>[];
+  eval_datasets: PhoenixEvalDatasets;
+}

@@ -6,7 +6,7 @@ import contextlib
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
 
 from argus.api.dependencies import AppContainer, get_container, get_tenant_context
@@ -20,6 +20,9 @@ from argus.core.schemas import (
     CloudWatchIngestResponse,
     CloudWatchQueryResponse,
     CorrelatedContainerLog,
+    EvalDatasetType,
+    OpenInferenceExportResponse,
+    OpenInferenceIngestRequest,
     SessionStatus,
 )
 from argus.core.tenancy import TenantContext
@@ -269,6 +272,39 @@ async def ingest_otlp(
     )
 
 
+@router.post("/openinference", response_model=IngestSpansResponse)
+async def ingest_openinference(
+    payload: OpenInferenceIngestRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    container: Annotated[AppContainer, Depends(get_container)],
+) -> IngestSpansResponse:
+    """Ingest raw OpenInference trace spans into Argus governance and trace store."""
+    sess_id = payload.session_id or new_uuid7()
+    trace_id = new_uuid7()
+
+    converted_spans: list[ArgusSpan] = []
+    for idx, raw_span in enumerate(payload.spans):
+        dotted_order = f"1.{idx + 1}"
+        span = container.phoenix_bridge.from_openinference_dict(
+            raw=raw_span,
+            tenant_id=ctx.tenant_id,
+            workspace_id=ctx.workspace_id,
+            session_id=sess_id,
+            trace_id=trace_id,
+            dotted_order=dotted_order,
+        )
+        converted_spans.append(span)
+
+    if not converted_spans:
+        return IngestSpansResponse(ingested_count=0)
+
+    return await ingest_spans(
+        payload=IngestSpansRequest(spans=converted_spans),
+        ctx=ctx,
+        container=container,
+    )
+
+
 @router.post("/cloudwatch", response_model=CloudWatchIngestResponse)
 async def ingest_cloudwatch(
     payload: CloudWatchIngestRequest,
@@ -407,20 +443,34 @@ async def get_session_spans(
     return await container.trace_store.get_session_spans(ctx, session_id)
 
 
-@router.get("/sessions/{session_id}/phoenix", response_model=dict[str, Any])
+@router.get("/sessions/{session_id}/phoenix", response_model=None)
 async def export_phoenix_openinference(
     session_id: uuid.UUID,
     ctx: Annotated[TenantContext, Depends(get_tenant_context)],
     container: Annotated[AppContainer, Depends(get_container)],
-) -> dict[str, Any]:
-    """Export session telemetry in Arize Phoenix OpenInference format and DataFrame records."""
+    eval_type: Annotated[EvalDatasetType, Query()] = EvalDatasetType.ALL,
+    format: Annotated[str, Query()] = "json",
+) -> Any:
+    """Export session telemetry in Arize Phoenix format, DataFrame, or evaluation datasets."""
     spans = await container.trace_store.get_session_spans(ctx, session_id)
-    return {
-        "session_id": str(session_id),
-        "span_count": len(spans),
-        "openinference_spans": [container.phoenix_bridge.to_openinference_dict(s) for s in spans],
-        "dataframe_records": container.phoenix_bridge.to_dataframe_records(spans),
-    }
+    if format.lower() == "csv":
+        csv_content = container.phoenix_bridge.to_dataframe_csv(spans)
+        return Response(
+            content=csv_content,
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f'attachment; filename="session_{session_id}_phoenix.csv"'
+            },
+        )
+
+    eval_datasets = container.phoenix_bridge.generate_eval_datasets(spans, eval_type=eval_type)
+    return OpenInferenceExportResponse(
+        session_id=session_id,
+        span_count=len(spans),
+        openinference_spans=[container.phoenix_bridge.to_openinference_dict(s) for s in spans],
+        dataframe_records=container.phoenix_bridge.to_dataframe_records(spans),
+        eval_datasets=eval_datasets,
+    )
 
 
 @router.get("/traces/{root_dotted_order}", response_model=list[ArgusSpan])

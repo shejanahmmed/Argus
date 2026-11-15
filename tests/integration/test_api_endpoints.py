@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -1586,5 +1587,119 @@ async def test_cloudwatch_query_filtering_and_sdk_lifecycle(
         assert len(logs_list) == 2
         assert "log_id" in logs_list[0]
         assert "message" in logs_list[0]
+
+
+@pytest.mark.asyncio
+async def test_phoenix_openinference_export_csv_and_eval_datasets(
+    auth_headers: dict[str, str],
+) -> None:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        # Seed realistic session with spans
+        seed_resp = await client.post("/api/v1/demo/seed", headers=auth_headers)
+        assert seed_resp.status_code == 200
+        sess_id = seed_resp.json()["sessions_created"][0]
+
+        # 1. Test JSON Export with eval datasets
+        resp_json = await client.get(
+            f"/api/v1/telemetry/sessions/{sess_id}/phoenix?format=json&eval_type=all",
+            headers=auth_headers,
+        )
+        assert resp_json.status_code == 200
+        data = resp_json.json()
+        assert data["session_id"] == sess_id
+        assert data["span_count"] >= 3
+        assert len(data["openinference_spans"]) == data["span_count"]
+        assert len(data["dataframe_records"]) == data["span_count"]
+        assert "eval_datasets" in data
+        assert "hallucination_records" in data["eval_datasets"]
+        assert "tool_calling_records" in data["eval_datasets"]
+        assert "trajectory_records" in data["eval_datasets"]
+        assert len(data["eval_datasets"]["trajectory_records"]) == data["span_count"]
+
+        # 2. Test CSV Export download
+        resp_csv = await client.get(
+            f"/api/v1/telemetry/sessions/{sess_id}/phoenix?format=csv",
+            headers=auth_headers,
+        )
+        assert resp_csv.status_code == 200
+        assert "text/csv" in resp_csv.headers["content-type"]
+        assert f"session_{sess_id}_phoenix.csv" in resp_csv.headers["content-disposition"]
+        csv_text = resp_csv.text
+        assert "span_id" in csv_text
+        assert "model_name" in csv_text
+        assert "cost_usd" in csv_text
+
+
+@pytest.mark.asyncio
+async def test_openinference_ingestion_and_sdk_lifecycle(
+    auth_headers: dict[str, str],
+) -> None:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        ctx = TenantContext(
+            tenant_id="tenant_a",
+            workspace_id="ws_1",
+            actor_id="admin_user",
+            role=Role.ADMIN,
+        )
+        sdk = ArgusC2Client(
+            ctx,
+            client=client,
+        )
+
+        session_id = new_uuid7()
+        raw_oi_spans: list[dict[str, Any]] = [
+            {
+                "name": "AnalyzeUserPrompt",
+                "span_kind": "LLM",
+                "openinference.span.kind": "LLM",
+                "llm.model_name": "claude-3-5-sonnet",
+                "llm.token_count.prompt": 450,
+                "llm.token_count.completion": 120,
+                "cost_usd": 0.00315,
+                "input.value": "Review trading strategy",
+                "output.value": "Strategy reviewed: approved.",
+            },
+            {
+                "name": "ExecuteRiskCheck",
+                "span_kind": "TOOL",
+                "openinference.span.kind": "TOOL",
+                "tool.name": "risk_engine",
+                "tool.description": "Evaluate portfolio risk",
+                "input.value": '{"risk_level": "moderate"}',
+                "output.value": '{"approved": true, "max_drawdown": 0.05}',
+            },
+        ]
+
+        # 1. Ingest via SDK
+        ingest_res = await sdk.ingest_openinference_spans(
+            raw_oi_spans,
+            session_id=session_id,
+            workflow_id="market_maker",
+            agent_name="risk_agent",
+        )
+        assert ingest_res["status"] == "ok"
+        assert ingest_res["ingested_count"] == 2
+
+        # 2. Export via SDK
+        export_data = await sdk.export_phoenix_spans(session_id)
+        assert export_data.span_count == 2
+        assert len(export_data.openinference_spans) == 2
+
+        # 3. Get DataFrame records via SDK
+        df_records = await sdk.get_phoenix_dataframe_records(session_id)
+        assert len(df_records) == 2
+        assert df_records[0]["model_name"] == "claude-3-5-sonnet"
+        assert df_records[1]["attributes.tool.name"] == "risk_engine"
+
+        # 4. Get CSV via SDK
+        csv_str = await sdk.export_phoenix_csv(session_id)
+        assert "span_id" in csv_str
+        assert "AnalyzeUserPrompt" in csv_str
+        assert "ExecuteRiskCheck" in csv_str
+
 
 

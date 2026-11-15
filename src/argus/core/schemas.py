@@ -879,3 +879,46 @@ class CloudWatchQueryResponse(BaseModel):
     offset: int
     logs: list[CorrelatedContainerLog]
 
+
+class EvalDatasetType(StrEnum):
+    """Supported offline evaluation dataset categories."""
+
+    ALL = "all"
+    HALLUCINATION = "hallucination"
+    TOOL_CALLING = "tool_calling"
+    TRAJECTORY = "trajectory"
+
+
+class PhoenixEvalDatasets(BaseModel):
+    """Synthesized offline evaluation records for Arize Phoenix evaluators."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    hallucination_records: list[dict[str, Any]] = Field(default_factory=list)
+    tool_calling_records: list[dict[str, Any]] = Field(default_factory=list)
+    trajectory_records: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class OpenInferenceExportResponse(BaseModel):
+    """Full export envelope containing OpenInference spans, DataFrame rows, and eval datasets."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: uuid.UUID
+    span_count: int
+    openinference_spans: list[dict[str, Any]]
+    dataframe_records: list[dict[str, Any]]
+    eval_datasets: PhoenixEvalDatasets
+
+
+class OpenInferenceIngestRequest(BaseModel):
+    """Inbound ingestion payload for external OpenInference trace dictionaries."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    spans: list[dict[str, Any]] = Field(min_length=1)
+    session_id: uuid.UUID | None = None
+    workflow_id: str = Field(default="openinference_import", min_length=1, max_length=128)
+    agent_name: str = Field(default="external_agent", min_length=1, max_length=128)
+    framework: AgentFramework = Field(default=AgentFramework.CUSTOM)
+
