@@ -80,6 +80,14 @@ class ControlStore(Protocol):
         """Return the most recent checkpoint for a session, or None if none exist."""
         ...
 
+    async def list_checkpoints(
+        self,
+        ctx: TenantContext,
+        session_id: uuid.UUID,
+    ) -> list[CheckpointRecord]:
+        """Return all historical checkpoints for an agent session ordered chronologically."""
+        ...
+
     async def list_sessions(
         self,
         ctx: TenantContext,

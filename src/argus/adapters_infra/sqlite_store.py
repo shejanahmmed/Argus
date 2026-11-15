@@ -370,6 +370,28 @@ class SqliteControlStore:
                 return None
             return CheckpointRecord.model_validate_json(row["payload_json"])
 
+    async def list_checkpoints(
+        self,
+        ctx: TenantContext,
+        session_id: uuid.UUID,
+    ) -> list[CheckpointRecord]:
+        async with self._engine.lock:
+            session = self._get_session_sync(session_id)
+            if session is None:
+                raise EntityNotFoundError("AgentSession", str(session_id))
+            ctx.assert_same_tenant(session.tenant_id, session.workspace_id)
+
+            cur = self._engine.conn.execute(
+                """
+                SELECT payload_json FROM argus_checkpoints
+                WHERE session_id = ?
+                ORDER BY seq_id ASC
+                """,
+                (str(session_id),),
+            )
+            rows = cur.fetchall()
+            return [CheckpointRecord.model_validate_json(r["payload_json"]) for r in rows]
+
     async def list_sessions(
         self,
         ctx: TenantContext,

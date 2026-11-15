@@ -166,6 +166,11 @@ async def test_sqlite_control_store_checkpoints_and_optimistic_lock(
     with pytest.raises(CheckpointConflictError):
         await store.save_checkpoint(ctx, cp_stale, expected_parent_id=None)
 
+    # Verify list_checkpoints
+    cps = await store.list_checkpoints(ctx, session_id)
+    assert len(cps) == 1
+    assert cps[0].checkpoint_id == cp1_id
+
 
 @pytest.mark.asyncio
 async def test_sqlite_budget_and_audit_stores(

@@ -52,6 +52,18 @@ const PATCH_PRESETS: Array<{ label: string; patch: string }> = [
       2
     ),
   },
+  {
+    label: "Budget Throttle Mode",
+    patch: JSON.stringify(
+      [
+        { op: "add", path: "/model_tier", value: "lightweight" },
+        { op: "add", path: "/max_tokens_per_step", value: 256 },
+        { op: "add", path: "/allow_expensive_tools", value: false },
+      ],
+      null,
+      2
+    ),
+  },
 ];
 
 export const C2ControlPanel: React.FC<C2ControlPanelProps> = ({

@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from argus.api.dependencies import AppContainer, get_container, get_tenant_context
 from argus.c2.lease_manager import HeartbeatStatus
+from argus.c2.presets import get_all_presets
 from argus.core.errors import (
     AuthorizationError,
     CheckpointConflictError,
@@ -24,6 +25,7 @@ from argus.core.schemas import (
     CheckpointRecord,
     JsonPatchOp,
     PendingToolCall,
+    StatePreset,
     ToolOverrideSpec,
 )
 from argus.core.tenancy import Role, TenantContext
@@ -51,6 +53,12 @@ class ApplyPatchRequest(BaseModel):
     reason: str = "Operator memory mutation"
 
 
+class ApplyPresetRequest(BaseModel):
+    operator_id: str
+    expected_parent_checkpoint_id: uuid.UUID | None = None
+    reason: str | None = None
+
+
 class SubmitOverrideRequest(BaseModel):
     tool_call_id: str
     decision: Literal["approve", "edit", "mock", "reject"]
@@ -75,6 +83,12 @@ class HeartbeatRequest(BaseModel):
 class ReapLeasesResponse(BaseModel):
     reaped_session_ids: list[str]
     reaped_count: int
+
+
+@router.get("/presets", response_model=list[StatePreset])
+async def list_state_presets() -> list[StatePreset]:
+    """List all registered Command & Control state mutation presets."""
+    return get_all_presets()
 
 
 @router.post("/{session_id}/pause", response_model=AgentSession)
@@ -249,6 +263,19 @@ async def get_latest_checkpoint(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err)) from err
 
 
+@router.get("/{session_id}/checkpoints", response_model=list[CheckpointRecord])
+async def list_checkpoints_for_session(
+    session_id: uuid.UUID,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    container: Annotated[AppContainer, Depends(get_container)],
+) -> list[CheckpointRecord]:
+    """Retrieve full chronological checkpoint history for an agent session."""
+    try:
+        return await container.c2_state_manager.list_checkpoints(ctx, session_id)
+    except EntityNotFoundError as err:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err)) from err
+
+
 @router.post("/{session_id}/patch", response_model=CheckpointRecord)
 async def apply_json_patch_state(
     session_id: uuid.UUID,
@@ -309,6 +336,56 @@ async def apply_json_patch_state(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid JSON patch operation: {err}",
+        ) from err
+
+
+@router.post("/{session_id}/apply-preset/{preset_id}", response_model=CheckpointRecord)
+async def apply_preset_to_session(
+    session_id: uuid.UUID,
+    preset_id: str,
+    payload: ApplyPresetRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    container: Annotated[AppContainer, Depends(get_container)],
+) -> CheckpointRecord:
+    """Apply a standardized pre-built state preset to a paused session's latest checkpoint."""
+    try:
+        new_checkpoint = await container.c2_state_manager.apply_preset(
+            ctx=ctx,
+            session_id=session_id,
+            preset_id=preset_id,
+            operator_id=payload.operator_id,
+            expected_checkpoint_id=payload.expected_parent_checkpoint_id,
+            reason=payload.reason,
+        )
+        await container.audit_store.append_event(
+            ctx,
+            session_id=session_id,
+            event_type="C2_PRESET_APPLIED",
+            payload={
+                "operator_id": payload.operator_id,
+                "preset_id": preset_id,
+                "checkpoint_id": str(new_checkpoint.checkpoint_id),
+            },
+        )
+        await container.event_bus.publish(
+            ctx,
+            channel="c2.checkpoint_created",
+            event={
+                "session_id": str(session_id),
+                "checkpoint_id": str(new_checkpoint.checkpoint_id),
+                "preset_id": preset_id,
+                "operator_id": payload.operator_id,
+            },
+        )
+        return new_checkpoint
+    except CheckpointConflictError as err:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(err)) from err
+    except EntityNotFoundError as err:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err)) from err
+    except (ValueError, KeyError, IndexError) as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid preset state mutation: {err}",
         ) from err
 
 

@@ -161,6 +161,11 @@ async def test_control_store_optimistic_checkpoint_concurrency_lock() -> None:
     with pytest.raises(CheckpointConflictError):
         await store.save_checkpoint(ctx, stale_cp, expected_parent_id=cp1.checkpoint_id)
 
+    # Verify list_checkpoints chronological history
+    cps = await store.list_checkpoints(ctx, session_id)
+    assert len(cps) == 2
+    assert [c.checkpoint_id for c in cps] == [cp1.checkpoint_id, cp2.checkpoint_id]
+
 
 async def test_budget_store_enforces_hard_cap_atomically() -> None:
     budget = InMemoryBudgetStore()

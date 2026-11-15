@@ -153,6 +153,18 @@ class InMemoryControlStore:
             history = self._checkpoints.get(session_id, [])
             return history[-1] if history else None
 
+    async def list_checkpoints(
+        self,
+        ctx: TenantContext,
+        session_id: uuid.UUID,
+    ) -> list[CheckpointRecord]:
+        async with self._lock:
+            session = self._sessions.get(session_id)
+            if session is None:
+                raise EntityNotFoundError("AgentSession", str(session_id))
+            ctx.assert_same_tenant(session.tenant_id, session.workspace_id)
+            return list(self._checkpoints.get(session_id, []))
+
     async def list_sessions(
         self,
         ctx: TenantContext,

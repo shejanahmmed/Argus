@@ -79,6 +79,39 @@ def test_session_state_machine_transitions() -> None:
     with pytest.raises(InvalidStateTransitionError):
         completed.transition_to(SessionStatus.RUNNING)
 
+    # Test TRIPPED_BUDGET recovery lifecycle: RUNNING -> TRIPPED_BUDGET -> PAUSED_C2 -> RUNNING
+    b_sess = AgentSession(
+        session_id=new_uuid7(),
+        tenant_id="tenant_a",
+        workspace_id="ws_1",
+        workflow_id="wf_budget",
+        agent_name="budget_agent",
+        framework=AgentFramework.CREWAI,
+        budget_cap_usd=1.0,
+    )
+    tripped_b = b_sess.transition_to(SessionStatus.TRIPPED_BUDGET)
+    assert tripped_b.status == SessionStatus.TRIPPED_BUDGET
+
+    # Operator rescues budget-tripped session via C2 pause
+    paused_b = tripped_b.transition_to(SessionStatus.PAUSED_C2)
+    assert paused_b.status == SessionStatus.PAUSED_C2
+
+    resumed_b = paused_b.transition_to(SessionStatus.RUNNING)
+    assert resumed_b.status == SessionStatus.RUNNING
+
+
+def test_state_preset_schema() -> None:
+    from argus.c2.presets import get_all_presets, get_preset
+
+    presets = get_all_presets()
+    assert len(presets) >= 4
+
+    p = get_preset("safe-fallback-plan")
+    assert p is not None
+    assert p.name == "Safe Fallback Plan"
+    assert len(p.patches) >= 1
+    assert p.patches[0].op == "replace"
+
 
 def test_argus_span_validates_hierarchy_and_timestamps() -> None:
     t0 = datetime(2026, 11, 14, 18, 0, 0, tzinfo=UTC)

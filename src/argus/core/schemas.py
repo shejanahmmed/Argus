@@ -8,7 +8,15 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import UUID7, BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    UUID7,
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from argus.core.errors import InvalidStateTransitionError
 from argus.core.ids import parse_dotted_order, utc_now
@@ -52,7 +60,7 @@ VALID_SESSION_TRANSITIONS: dict[SessionStatus, frozenset[SessionStatus]] = {
     ),
     SessionStatus.PAUSED_C2: frozenset({SessionStatus.RUNNING, SessionStatus.TERMINATED}),
     SessionStatus.TRIPPED_LOOP: frozenset({SessionStatus.PAUSED_C2, SessionStatus.TERMINATED}),
-    SessionStatus.TRIPPED_BUDGET: frozenset({SessionStatus.TERMINATED}),
+    SessionStatus.TRIPPED_BUDGET: frozenset({SessionStatus.PAUSED_C2, SessionStatus.TERMINATED}),
     SessionStatus.COMPLETED: frozenset(),
     SessionStatus.TERMINATED: frozenset(),
 }
@@ -103,12 +111,30 @@ class AgentFramework(StrEnum):
 class JsonPatchOp(BaseModel):
     """RFC 6902 JSON Patch operation for state diffs and mid-execution C2 memory edits."""
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
 
     op: Literal["add", "remove", "replace", "move", "copy", "test"]
     path: str = Field(min_length=1, pattern=r"^/.*")
     value: Any = None
-    from_path: str | None = Field(default=None, alias="from", pattern=r"^/.*")
+    from_path: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("from_path", "from"),
+        serialization_alias="from",
+        pattern=r"^/.*",
+    )
+
+
+class StatePreset(BaseModel):
+    """Pre-built state mutation template for one-click C2 interventions."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    preset_id: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=128)
+    description: str = Field(min_length=1, max_length=512)
+    patches: tuple[JsonPatchOp, ...]
+    target_env_override: str | None = None
+    recommended_for: tuple[str, ...] = Field(default_factory=tuple)
 
 
 class ArgusSpan(BaseModel):

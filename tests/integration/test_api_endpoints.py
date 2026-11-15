@@ -938,3 +938,114 @@ async def test_c2_pending_tools_multitenant_isolation(auth_headers: dict[str, st
         tools_b = res_tenant_b.json()
         assert len(tools_b) == 0  # Strictly isolated across tenant boundaries!
 
+
+@pytest.mark.asyncio
+async def test_c2_presets_and_timeline_endpoints(auth_headers: dict[str, str]) -> None:
+    container = get_container()
+    ctx = TenantContext(
+        tenant_id="test_tenant",
+        workspace_id="test_workspace",
+        actor_id="admin_user",
+        role=Role.ADMIN,
+    )
+    session_id = new_uuid7()
+    session = AgentSession(
+        session_id=session_id,
+        tenant_id=ctx.tenant_id,
+        workspace_id=ctx.workspace_id,
+        workflow_id="wf_c2_test",
+        agent_name="c2_agent",
+        framework=AgentFramework.LANGGRAPH,
+        budget_cap_usd=20.0,
+        status=SessionStatus.RUNNING,
+    )
+    await container.control_store.create_session(ctx, session)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        # 1. GET /api/v1/c2/presets
+        r_presets = await client.get("/api/v1/c2/presets", headers=auth_headers)
+        assert r_presets.status_code == 200
+        presets_data = r_presets.json()
+        assert len(presets_data) >= 4
+        preset_ids = [p["preset_id"] for p in presets_data]
+        assert "safe-fallback-plan" in preset_ids
+        assert "force-sandbox-replica" in preset_ids
+
+        # 2. Pause session for C2
+        r_pause = await client.post(
+            f"/api/v1/c2/{session_id}/pause",
+            headers=auth_headers,
+            json={"operator_id": "admin_user", "reason": "Testing C2 presets"},
+        )
+        assert r_pause.status_code == 200
+        assert r_pause.json()["status"] == "PAUSED_C2"
+
+        # 3. Create initial checkpoint
+        r_cp0 = await client.post(
+            f"/api/v1/c2/{session_id}/checkpoints",
+            headers=auth_headers,
+            json={
+                "node_name": "agent_init",
+                "step_index": 0,
+                "memory_state": {"plan": ["drop table test"], "env": "prod"},
+            },
+        )
+        assert r_cp0.status_code == 200
+        cp0_id = r_cp0.json()["checkpoint_id"]
+
+        # 4. Apply preset 'safe-fallback-plan'
+        r_apply = await client.post(
+            f"/api/v1/c2/{session_id}/apply-preset/safe-fallback-plan",
+            headers=auth_headers,
+            json={
+                "operator_id": "admin_user",
+                "expected_parent_checkpoint_id": cp0_id,
+                "reason": "Safe fallback intervention",
+            },
+        )
+        assert r_apply.status_code == 200
+        cp1_data = r_apply.json()
+        assert cp1_data["parent_checkpoint_id"] == cp0_id
+        assert "read-only schema" in cp1_data["memory_state"]["plan"][0]
+
+        # 5. GET /api/v1/c2/{session_id}/checkpoints (full timeline)
+        r_timeline = await client.get(
+            f"/api/v1/c2/{session_id}/checkpoints",
+            headers=auth_headers,
+        )
+        assert r_timeline.status_code == 200
+        timeline = r_timeline.json()
+        assert len(timeline) == 2
+        assert timeline[0]["checkpoint_id"] == cp0_id
+        assert timeline[1]["checkpoint_id"] == cp1_data["checkpoint_id"]
+
+        # 6. Test optimistic concurrency conflict (stale parent checkpoint ID) -> HTTP 409
+        r_conflict = await client.post(
+            f"/api/v1/c2/{session_id}/patch",
+            headers=auth_headers,
+            json={
+                "operator_id": "admin_user",
+                "expected_parent_checkpoint_id": cp0_id,  # Stale! Latest is cp1
+                "patches": [{"op": "replace", "path": "/env", "value": "dev"}],
+            },
+        )
+        assert r_conflict.status_code == 409
+
+        # 7. Test invalid RFC 6902 patch (e.g. test mismatch) -> HTTP 400
+        r_bad_patch = await client.post(
+            f"/api/v1/c2/{session_id}/patch",
+            headers=auth_headers,
+            json={
+                "operator_id": "admin_user",
+                "expected_parent_checkpoint_id": cp1_data["checkpoint_id"],
+                "patches": [
+                    {"op": "test", "path": "/env", "value": "staging"},  # env is 'prod'
+                ],
+            },
+        )
+        assert r_bad_patch.status_code == 400
+        assert "test" in r_bad_patch.json()["detail"].lower()
+
+
