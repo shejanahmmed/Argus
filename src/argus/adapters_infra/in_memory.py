@@ -218,6 +218,21 @@ class InMemoryBudgetStore:
             self._spend[key] = projected
             return projected
 
+    async def release_budget(
+        self,
+        ctx: TenantContext,
+        session_id: uuid.UUID,
+        amount_usd: float,
+    ) -> float:
+        if amount_usd < 0.0:
+            raise ValueError("amount_usd cannot be negative.")
+        key = (ctx.tenant_id, ctx.workspace_id, session_id)
+        async with self._lock:
+            current = self._spend[key]
+            updated = max(0.0, round(current - amount_usd, 8))
+            self._spend[key] = updated
+            return updated
+
     async def get_spend(self, ctx: TenantContext, session_id: uuid.UUID) -> float:
         key = (ctx.tenant_id, ctx.workspace_id, session_id)
         async with self._lock:

@@ -6,7 +6,7 @@ import contextlib
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from argus.api.dependencies import AppContainer, get_container, get_tenant_context
@@ -30,14 +30,32 @@ class CheckLoopRequest(BaseModel):
 
 class CheckBudgetRequest(BaseModel):
     session_id: uuid.UUID
-    requested_usd: float = Field(ge=0.0)
-    hard_cap_usd: float = Field(gt=0.0)
+    requested_usd: float = Field(default=0.0, ge=0.0)
+    hard_cap_usd: float = Field(default=50.0, gt=0.0)
+    model_name: str | None = None
+    estimated_prompt_tokens: int = Field(default=0, ge=0)
+    estimated_completion_tokens: int = Field(default=0, ge=0)
+    raise_on_trip: bool = False
 
 
 class CheckBudgetResponse(BaseModel):
     allowed: bool
+    status: str
     current_spend_usd: float
     remaining_usd: float
+    message: str
+    warning_tripped: bool = False
+
+
+class ReleaseBudgetRequest(BaseModel):
+    session_id: uuid.UUID
+    amount_usd: float = Field(gt=0.0)
+
+
+class ReleaseBudgetResponse(BaseModel):
+    session_id: str
+    status: str
+    updated_spend_usd: float
     message: str
 
 
@@ -105,23 +123,83 @@ async def check_budget(
         session_id=payload.session_id,
         requested_usd=payload.requested_usd,
         hard_cap_usd=payload.hard_cap_usd,
+        model_name=payload.model_name,
+        estimated_prompt_tokens=payload.estimated_prompt_tokens,
+        estimated_completion_tokens=payload.estimated_completion_tokens,
     )
     remaining = max(0.0, payload.hard_cap_usd - verdict.accumulated_cost_usd)
+
     if verdict.tripped:
+        # 1. State machine synchronization: transition to TRIPPED_BUDGET
+        with contextlib.suppress(Exception):
+            await container.control_store.transition_session(
+                ctx=ctx,
+                session_id=payload.session_id,
+                expected_status=SessionStatus.RUNNING,
+                next_status=SessionStatus.TRIPPED_BUDGET,
+            )
+
+        # 2. Append compliance audit event
+        with contextlib.suppress(Exception):
+            await container.audit_store.append_event(
+                ctx,
+                session_id=payload.session_id,
+                event_type="C2_BUDGET_TRIPPED",
+                payload={
+                    "accumulated_usd": verdict.accumulated_cost_usd,
+                    "hard_cap_usd": payload.hard_cap_usd,
+                    "detail": verdict.diagnostic_message,
+                },
+            )
+
+        # 3. Publish real-time circuit breaker event
         await container.event_bus.publish(
             ctx,
             channel="governance.circuit_breaker",
             event={
                 "session_id": str(payload.session_id),
                 "reason": verdict.reason.value,
+                "current_spend_usd": verdict.accumulated_cost_usd,
+                "hard_cap_usd": payload.hard_cap_usd,
                 "detail": verdict.diagnostic_message,
             },
         )
+
+        # 4. HTTP 402 enforcement if requested or configured
+        if payload.raise_on_trip or container.settings.budget_enforce_http_402:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail={
+                    "error": "BUDGET_EXCEEDED",
+                    "status": "TRIPPED_BUDGET",
+                    "session_id": str(payload.session_id),
+                    "current_spend_usd": verdict.accumulated_cost_usd,
+                    "hard_cap_usd": payload.hard_cap_usd,
+                    "message": verdict.diagnostic_message,
+                },
+            )
+
         return CheckBudgetResponse(
             allowed=False,
+            status="TRIPPED_BUDGET",
             current_spend_usd=verdict.accumulated_cost_usd,
             remaining_usd=0.0,
             message=verdict.diagnostic_message,
+            warning_tripped=False,
+        )
+
+    # Check proactive soft warning threshold
+    is_warning = "Budget warning" in verdict.diagnostic_message
+    if is_warning:
+        await container.event_bus.publish(
+            ctx,
+            channel="governance.budget_warning",
+            event={
+                "session_id": str(payload.session_id),
+                "current_spend_usd": verdict.accumulated_cost_usd,
+                "hard_cap_usd": payload.hard_cap_usd,
+                "detail": verdict.diagnostic_message,
+            },
         )
 
     with contextlib.suppress(Exception):
@@ -131,9 +209,32 @@ async def check_budget(
 
     return CheckBudgetResponse(
         allowed=True,
+        status="RUNNING",
         current_spend_usd=verdict.accumulated_cost_usd,
         remaining_usd=remaining,
         message=verdict.diagnostic_message,
+        warning_tripped=is_warning,
+    )
+
+
+@router.post("/release-budget", response_model=ReleaseBudgetResponse)
+async def release_budget(
+    payload: ReleaseBudgetRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    container: Annotated[AppContainer, Depends(get_container)],
+) -> ReleaseBudgetResponse:
+    """Refund or reconcile over-reserved spend."""
+    ctx.assert_can_mutate_c2()
+    updated_spend = await container.budget_guard.release_reservation(
+        ctx=ctx,
+        session_id=payload.session_id,
+        amount_usd=payload.amount_usd,
+    )
+    return ReleaseBudgetResponse(
+        session_id=str(payload.session_id),
+        status="ok",
+        updated_spend_usd=updated_spend,
+        message=f"Released ${payload.amount_usd:.6f}; current spend is now ${updated_spend:.6f}",
     )
 
 

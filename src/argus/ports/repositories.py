@@ -115,6 +115,15 @@ class BudgetStore(Protocol):
         """Atomically verify and increment session spend; raise BudgetExceededError if over cap."""
         ...
 
+    async def release_budget(
+        self,
+        ctx: TenantContext,
+        session_id: uuid.UUID,
+        amount_usd: float,
+    ) -> float:
+        """Atomically refund or reconcile unused reserved budget."""
+        ...
+
     async def get_spend(self, ctx: TenantContext, session_id: uuid.UUID) -> float:
         """Return current accumulated spend in USD for a session."""
         ...

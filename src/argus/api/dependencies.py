@@ -94,7 +94,10 @@ class AppContainer:
             simhash_max_hamming=self.settings.loop_simhash_max_hamming,
             max_tracked_sessions=self.settings.loop_max_tracked_sessions,
         )
-        self.budget_guard = BudgetGuard(backend=self.budget_store)
+        self.budget_guard = BudgetGuard(
+            backend=self.budget_store,
+            warning_threshold=self.settings.budget_warning_threshold,
+        )
         self.mcp_proxy = McpGovernanceProxy(
             loop_detector=self.loop_detector,
             budget_guard=self.budget_guard,

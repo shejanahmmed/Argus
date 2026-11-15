@@ -181,6 +181,15 @@ async def test_budget_store_enforces_hard_cap_atomically() -> None:
     # Spend must remain unchanged after rejected reservation
     assert await budget.get_spend(ctx, session_id) == pytest.approx(0.95)
 
+    # Release 0.40 of reservation -> Spend decreases to 0.55
+    refunded = await budget.release_budget(ctx, session_id, amount_usd=0.40)
+    assert refunded == pytest.approx(0.55)
+    assert await budget.get_spend(ctx, session_id) == pytest.approx(0.55)
+
+    # Now reserving 0.30 succeeds within 1.00 cap
+    spend3 = await budget.reserve_budget(ctx, session_id, requested_usd=0.30, hard_cap_usd=1.00)
+    assert spend3 == pytest.approx(0.85)
+
 
 async def test_audit_store_hash_chain_and_event_bus() -> None:
     audit = InMemoryAuditStore()

@@ -460,6 +460,38 @@ class SqliteBudgetStore:
             self._engine.conn.commit()
             return projected
 
+    async def release_budget(
+        self,
+        ctx: TenantContext,
+        session_id: uuid.UUID,
+        amount_usd: float,
+    ) -> float:
+        if amount_usd < 0.0:
+            raise ValueError("amount_usd cannot be negative.")
+
+        async with self._engine.lock:
+            cur = self._engine.conn.execute(
+                """
+                SELECT accumulated_usd FROM argus_budgets
+                WHERE tenant_id = ? AND workspace_id = ? AND session_id = ?
+                """,
+                (ctx.tenant_id, ctx.workspace_id, str(session_id)),
+            )
+            row = cur.fetchone()
+            current = float(row["accumulated_usd"]) if row is not None else 0.0
+            updated = max(0.0, round(current - amount_usd, 8))
+            self._engine.conn.execute(
+                """
+                INSERT INTO argus_budgets (tenant_id, workspace_id, session_id, accumulated_usd)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(tenant_id, workspace_id, session_id)
+                DO UPDATE SET accumulated_usd = excluded.accumulated_usd
+                """,
+                (ctx.tenant_id, ctx.workspace_id, str(session_id), updated),
+            )
+            self._engine.conn.commit()
+            return updated
+
     async def get_spend(self, ctx: TenantContext, session_id: uuid.UUID) -> float:
         async with self._engine.lock:
             cur = self._engine.conn.execute(

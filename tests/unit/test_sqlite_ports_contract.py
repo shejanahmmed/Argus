@@ -184,6 +184,15 @@ async def test_sqlite_budget_and_audit_stores(
     with pytest.raises(BudgetExceededError):
         await budget_store.reserve_budget(ctx, session_id, 7.0, 10.0)
 
+    # Release 1.5 of reserved budget -> spend becomes 2.5
+    refunded = await budget_store.release_budget(ctx, session_id, 1.5)
+    assert refunded == 2.5
+    assert await budget_store.get_spend(ctx, session_id) == 2.5
+
+    # Now reserving 7.0 succeeds within 10.0 cap (2.5 + 7.0 = 9.5)
+    spend_again = await budget_store.reserve_budget(ctx, session_id, 7.0, 10.0)
+    assert spend_again == 9.5
+
     await audit_store.append_event(
         ctx,
         session_id=session_id,

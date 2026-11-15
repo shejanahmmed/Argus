@@ -87,6 +87,22 @@ class ArgusSettings(BaseModel):
         le=1000000,
         description="Maximum active sessions retained in loop history LRU cache.",
     )
+    # Budget Guard Enforcer Settings
+    budget_default_cap_usd: float = Field(
+        default=50.0,
+        gt=0.0,
+        description="Default hard budget cap in USD for new agent sessions.",
+    )
+    budget_warning_threshold: float = Field(
+        default=0.80,
+        ge=0.10,
+        le=0.99,
+        description="Budget utilization ratio triggering proactive warning alerts.",
+    )
+    budget_enforce_http_402: bool = Field(
+        default=False,
+        description="Whether check-budget endpoint raises HTTP 402 by default on budget trip.",
+    )
 
     @classmethod
     def from_env(cls) -> ArgusSettings:
@@ -137,6 +153,9 @@ class ArgusSettings(BaseModel):
             except ValueError:
                 return default
 
+        raw_402 = os.environ.get("ARGUS_BUDGET_ENFORCE_HTTP_402", "").strip().lower()
+        budget_402 = raw_402 in ("1", "true", "yes")
+
         return cls(
             env=env,
             auth_secret=auth_secret,
@@ -151,6 +170,9 @@ class ArgusSettings(BaseModel):
             loop_semantic_threshold=_get_float("ARGUS_LOOP_SEMANTIC_THRESHOLD", 0.65),
             loop_simhash_max_hamming=_get_int("ARGUS_LOOP_SIMHASH_MAX_HAMMING", 3),
             loop_max_tracked_sessions=_get_int("ARGUS_LOOP_MAX_TRACKED_SESSIONS", 10000),
+            budget_default_cap_usd=_get_float("ARGUS_BUDGET_DEFAULT_CAP", 50.0),
+            budget_warning_threshold=_get_float("ARGUS_BUDGET_WARNING_THRESHOLD", 0.80),
+            budget_enforce_http_402=budget_402,
         )
 
     @model_validator(mode="after")

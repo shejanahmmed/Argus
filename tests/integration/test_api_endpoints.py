@@ -716,3 +716,97 @@ async def test_governance_check_and_reset_loop_endpoints(auth_headers: dict[str,
         )
         assert r_after.status_code == 200
         assert not r_after.json()["tripped"]
+
+
+@pytest.mark.asyncio
+async def test_governance_check_budget_with_dynamic_tokens_and_http_402(
+    auth_headers: dict[str, str],
+) -> None:
+    container = get_container()
+    ctx = TenantContext(
+        tenant_id="test_tenant",
+        workspace_id="test_workspace",
+        actor_id="admin_user",
+        role=Role.ADMIN,
+    )
+    session_id = new_uuid7()
+    session = AgentSession(
+        session_id=session_id,
+        tenant_id=ctx.tenant_id,
+        workspace_id=ctx.workspace_id,
+        workflow_id="wf_budget_test",
+        agent_name="budget_tester",
+        framework=AgentFramework.LANGGRAPH,
+        budget_cap_usd=0.05,
+    )
+    await container.control_store.create_session(ctx, session)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        # 1. Dynamic token pricing: Claude 3.5 Sonnet (1000 prompt, 500 completion = $0.0105)
+        r1 = await client.post(
+            "/api/v1/governance/check-budget",
+            headers=auth_headers,
+            json={
+                "session_id": str(session_id),
+                "hard_cap_usd": 0.05,
+                "model_name": "claude-3-5-sonnet-20241022",
+                "estimated_prompt_tokens": 1000,
+                "estimated_completion_tokens": 500,
+            },
+        )
+        assert r1.status_code == 200
+        data1 = r1.json()
+        assert data1["allowed"] is True
+        assert data1["status"] == "RUNNING"
+        assert data1["current_spend_usd"] == pytest.approx(0.0105, abs=1e-4)
+        assert data1["warning_tripped"] is False
+
+        # 2. Spend 0.032 -> Total 0.0425 (85% of 0.05 cap) -> Soft warning tripped
+        r2 = await client.post(
+            "/api/v1/governance/check-budget",
+            headers=auth_headers,
+            json={
+                "session_id": str(session_id),
+                "hard_cap_usd": 0.05,
+                "requested_usd": 0.032,
+            },
+        )
+        assert r2.status_code == 200
+        data2 = r2.json()
+        assert data2["allowed"] is True
+        assert data2["warning_tripped"] is True
+        assert "Budget warning" in data2["message"]
+
+        # 3. Spend 0.020 with raise_on_trip=True -> Exceeds 0.05 cap -> HTTP 402 Payment Required!
+        r3 = await client.post(
+            "/api/v1/governance/check-budget",
+            headers=auth_headers,
+            json={
+                "session_id": str(session_id),
+                "hard_cap_usd": 0.05,
+                "requested_usd": 0.020,
+                "raise_on_trip": True,
+            },
+        )
+        assert r3.status_code == 402
+        detail = r3.json()["detail"]
+        assert detail["status"] == "TRIPPED_BUDGET"
+        assert detail["error"] == "BUDGET_EXCEEDED"
+
+        # 4. Verify session transitioned to TRIPPED_BUDGET
+        updated_sess = await container.control_store.get_session(ctx, session_id)
+        assert updated_sess.status == SessionStatus.TRIPPED_BUDGET
+
+        # 5. Release 0.025 unused reservation via /release-budget
+        r_release = await client.post(
+            "/api/v1/governance/release-budget",
+            headers=auth_headers,
+            json={
+                "session_id": str(session_id),
+                "amount_usd": 0.025,
+            },
+        )
+        assert r_release.status_code == 200
+        assert r_release.json()["updated_spend_usd"] == pytest.approx(0.0175, abs=1e-4)
