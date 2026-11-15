@@ -312,3 +312,29 @@ export interface OpenInferenceExportResponse {
   dataframe_records: Record<string, unknown>[];
   eval_datasets: PhoenixEvalDatasets;
 }
+
+export interface StorageDiagnostics {
+  db_path: string;
+  journal_mode: string;
+  page_size: number;
+  page_count: number;
+  freelist_count: number;
+  database_size_bytes: number;
+  wal_size_bytes: number;
+  total_size_bytes: number;
+  integrity_check: string;
+  table_counts: {
+    sessions: number;
+    checkpoints: number;
+    spans: number;
+    budgets: number;
+    audit_entries: number;
+  };
+}
+
+export interface ReadyzResponse {
+  status: "READY" | "DEGRADED";
+  service: string;
+  storage_backend: "memory" | "sqlite" | "postgres";
+  diagnostics?: StorageDiagnostics;
+}

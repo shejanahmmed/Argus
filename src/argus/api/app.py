@@ -215,6 +215,20 @@ def create_app() -> FastAPI:
         ]
         return "\n".join(lines) + "\n"
 
+    @app.post("/api/v1/system/checkpoint", tags=["System"])
+    async def trigger_wal_checkpoint(mode: str = "PASSIVE") -> dict[str, Any]:
+        """Execute SQLite WAL checkpoint to flush frames to disk."""
+        app_container = get_container()
+        if app_container._sqlite_engine is None:
+            return {"status": "SKIPPED", "reason": "In-memory backend active"}
+        busy, log_frames, checkpointed = app_container._sqlite_engine.checkpoint_wal(mode)
+        return {
+            "status": "CHECKPOINTED",
+            "busy": busy,
+            "log_frames": log_frames,
+            "checkpointed_frames": checkpointed,
+        }
+
     @app.get("/", tags=["System"])
     async def root_index() -> dict[str, str]:
         """Root API summary."""

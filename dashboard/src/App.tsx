@@ -18,6 +18,8 @@ import {
   ViewMode,
   WorkerLease,
   ReapLeasesResponse,
+  StorageDiagnostics,
+  ReadyzResponse,
 } from "./types";
 
 export const App: React.FC = () => {
@@ -38,6 +40,9 @@ export const App: React.FC = () => {
   const [recommendations, setRecommendations] = useState<DowngradeRecommendation[]>([]);
   const [logs, setLogs] = useState<ContainerLog[]>([]);
   const [activeLease, setActiveLease] = useState<WorkerLease | null>(null);
+  const [storageBackend, setStorageBackend] = useState<string>("sqlite");
+  const [storageDiagnostics, setStorageDiagnostics] = useState<StorageDiagnostics | null>(null);
+  const [systemReady, setSystemReady] = useState<boolean>(true);
 
   // Multi-tenant Security Context & Bearer Auth
   const [tenantId, setTenantId] = useState<string>(
@@ -91,6 +96,37 @@ export const App: React.FC = () => {
       // Offline fallback
     }
   }, [authFetch]);
+
+  const fetchSystemReadiness = useCallback(async () => {
+    try {
+      const res = await fetch("/readyz?diagnostics=true");
+      if (res.ok) {
+        const data: ReadyzResponse = await res.json();
+        setSystemReady(data.status === "READY");
+        if (data.storage_backend) setStorageBackend(data.storage_backend);
+        if (data.diagnostics) setStorageDiagnostics(data.diagnostics);
+      }
+    } catch {
+      // Offline fallback
+    }
+  }, []);
+
+  const handleFlushWalCheckpoint = useCallback(async () => {
+    try {
+      const res = await authFetch("/api/v1/system/checkpoint", { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        setStatusMessage(
+          `WAL Checkpoint complete: ${data.checkpointed_frames ?? 0} frames committed to disk.`
+        );
+        await fetchSystemReadiness();
+      } else {
+        setStatusMessage("Checkpoint skipped or in-memory backend active.");
+      }
+    } catch {
+      setStatusMessage("Failed to execute WAL checkpoint.");
+    }
+  }, [authFetch, fetchSystemReadiness]);
 
   const fetchBenchmarks = useCallback(async () => {
     try {
@@ -215,7 +251,8 @@ export const App: React.FC = () => {
     fetchSessions();
     fetchBenchmarks();
     fetchCloudWatchLogs();
-  }, [fetchSessions, fetchBenchmarks, fetchCloudWatchLogs]);
+    fetchSystemReadiness();
+  }, [fetchSessions, fetchBenchmarks, fetchCloudWatchLogs, fetchSystemReadiness]);
 
   useEffect(() => {
     if (selectedSessionId) {
@@ -574,6 +611,10 @@ export const App: React.FC = () => {
         workspaceId={workspaceId}
         authToken={authToken}
         onSaveAuthConfig={handleSaveAuthConfig}
+        storageBackend={storageBackend}
+        storageDiagnostics={storageDiagnostics}
+        systemReady={systemReady}
+        onFlushWalCheckpoint={handleFlushWalCheckpoint}
       />
 
       <main className="flex-1 p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-[1920px] w-full mx-auto">

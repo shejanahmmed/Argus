@@ -145,14 +145,20 @@ export const FleetOverview: React.FC<FleetOverviewProps> = ({
                   </div>
 
                   <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                    {(sess.status === "RUNNING" || sess.status === "TRIPPED_LOOP") && (
+                    {(sess.status === "RUNNING" ||
+                      sess.status === "TRIPPED_LOOP" ||
+                      sess.status === "TRIPPED_BUDGET") && (
                       <button
-                        title="Pause session for inspection / C2 intervention"
+                        title={
+                          sess.status.startsWith("TRIPPED_")
+                            ? "Unlock C2: Pause session to inspect state or adjust parameters"
+                            : "Pause session for inspection / C2 intervention"
+                        }
                         onClick={() => onPause(sess.session_id)}
                         className="rounded px-2 py-1 border border-zinc-700 hover:bg-zinc-800 text-zinc-300 text-xs font-medium transition-colors cursor-pointer flex items-center gap-1"
                       >
                         <Pause className="h-3 w-3 text-amber-400" />
-                        <span>{sess.status === "TRIPPED_LOOP" ? "Unlock C2" : "Pause"}</span>
+                        <span>{sess.status.startsWith("TRIPPED_") ? "Unlock C2" : "Pause"}</span>
                       </button>
                     )}
 
