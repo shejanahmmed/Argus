@@ -11,7 +11,13 @@ from argus.attribution.evaluator import TrajectoryEvaluator
 from argus.attribution.hf_benchmarks import HuggingFaceBenchmarkAnalyzer
 from argus.attribution.roi_engine import ROIEngine
 from argus.core.ids import build_dotted_order, new_uuid7, utc_now
-from argus.core.schemas import AgentFramework, ArgusSpan, OperationName, SpanKind
+from argus.core.schemas import (
+    AgentFramework,
+    ArgusSpan,
+    ModelBenchmarkProfile,
+    OperationName,
+    SpanKind,
+)
 from argus.core.tenancy import Role, TenantContext
 
 
@@ -359,7 +365,114 @@ def test_hf_benchmark_pareto_recommendations() -> None:
     )
 
     assert len(recs) >= 1
-    # DeepSeek-v3 should be recommended with high cost savings
+    # Recommendations should include DeepSeek-v3 or Llama-3.3-70b
+    candidate_names = [r.candidate_model for r in recs]
+    assert "deepseek-v3" in candidate_names or "llama-3-3-70b" in candidate_names
     top = recs[0]
-    assert "cost_savings_pct" in top
-    assert top["cost_savings_pct"] > 50.0
+    assert top.cost_savings_pct > 50.0
+    assert top.is_pareto_optimal is True
+    assert top.strategy_tier in (
+        "EXTREME_SAVINGS",
+        "BALANCED_FRONTIER",
+        "ULTRA_LOW_LATENCY",
+        "OPEN_WEIGHTS_PREFERRED",
+    )
+
+
+def test_hf_benchmark_alias_resolution() -> None:
+    analyzer = HuggingFaceBenchmarkAnalyzer()
+
+    # Resolve provider aliases
+    p1 = analyzer.resolve_model("claude-3-5-sonnet-20241022")
+    assert p1 is not None
+    assert p1.model_name == "claude-3-5-sonnet"
+
+    p2 = analyzer.resolve_model("meta-llama/llama-3.3-70b-instruct")
+    assert p2 is not None
+    assert p2.model_name == "llama-3-3-70b"
+
+    p3 = analyzer.resolve_model("unknown-custom-model-xyz")
+    assert p3 is None
+
+
+def test_hf_benchmark_open_weights_filtering() -> None:
+    analyzer = HuggingFaceBenchmarkAnalyzer()
+
+    # Recommend only open-weights candidates
+    recs = analyzer.get_pareto_recommendations(
+        "gpt-4o", min_acceptable_accuracy=0.50, open_weights_only=True
+    )
+
+    assert len(recs) >= 1
+    for r in recs:
+        assert r.open_weights is True
+
+
+def test_hf_benchmark_custom_catalog_registration() -> None:
+    analyzer = HuggingFaceBenchmarkAnalyzer()
+
+    custom = ModelBenchmarkProfile(
+        model_name="qwen-2-5-coder-32b-local",
+        display_name="Qwen 2.5 Coder 32B (Local vLLM)",
+        provider="self-hosted",
+        open_weights=True,
+        gaia_accuracy=0.65,
+        open_llm_score=78.0,
+        ttft_ms=120.0,
+        throughput_tokens_sec=110.0,
+        input_cost_per_1k=0.00005,
+        output_cost_per_1k=0.00010,
+        context_window_tokens=128000,
+        aliases=("qwen-coder-local",),
+    )
+    registered = analyzer.register_model(custom)
+    assert registered.model_name == "qwen-2-5-coder-32b-local"
+
+    recs = analyzer.get_pareto_recommendations(
+        "claude-3-5-sonnet", min_acceptable_accuracy=0.60
+    )
+    assert any(r.candidate_model == "qwen-2-5-coder-32b-local" for r in recs)
+
+
+def test_hf_benchmark_session_downgrade_analysis() -> None:
+    analyzer = HuggingFaceBenchmarkAnalyzer()
+    session_id = new_uuid7()
+    t0 = utc_now()
+
+    span_id = new_uuid7()
+    s = ArgusSpan(
+        tenant_id="t1",
+        workspace_id="w1",
+        session_id=session_id,
+        trace_id=new_uuid7(),
+        span_id=span_id,
+        parent_span_id=None,
+        dotted_order=build_dotted_order(t0, span_id),
+        name="llm_chat",
+        span_kind=SpanKind.LLM,
+        operation_name=OperationName.CHAT,
+        model_name="claude-3-5-sonnet",
+        prompt_tokens=8000,
+        completion_tokens=2500,
+        cost_usd=0.0615,
+        started_at=t0,
+    )
+
+    report = analyzer.analyze_session_downgrade(
+        [s],
+        session_id=session_id,
+        min_acceptable_accuracy=0.55,
+        annual_session_volume=5000,
+    )
+
+    assert report.session_id == session_id
+    assert report.active_model == "claude-3-5-sonnet"
+    assert report.total_prompt_tokens == 8000
+    assert report.total_completion_tokens == 2500
+    assert report.current_session_cost_usd > 0.05
+    assert len(report.recommendations) >= 1
+
+    top = report.recommendations[0]
+    assert top.projected_session_cost_usd < report.current_session_cost_usd
+    assert top.session_dollar_savings_usd > 0.0
+    assert top.projected_annual_savings_10k_sessions_usd > 0.0

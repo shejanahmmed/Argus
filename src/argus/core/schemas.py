@@ -744,3 +744,73 @@ class IssueTokenResponse(BaseModel):
     role: Role
     expires_at_epoch: int
 
+
+class ModelBenchmarkProfile(BaseModel):
+    """Benchmark performance metrics and pricing for an LLM model profile."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    model_name: str = Field(min_length=1, max_length=128)
+    display_name: str = Field(min_length=1, max_length=128)
+    provider: str = Field(min_length=1, max_length=64)
+    open_weights: bool = Field(default=False)
+    gaia_accuracy: float = Field(ge=0.0, le=1.0)
+    open_llm_score: float = Field(default=0.0, ge=0.0, le=100.0)
+    ttft_ms: float = Field(gt=0.0)
+    throughput_tokens_sec: float = Field(gt=0.0)
+    input_cost_per_1k: float = Field(ge=0.0)
+    output_cost_per_1k: float = Field(ge=0.0)
+    context_window_tokens: int = Field(default=128000, gt=0)
+    aliases: tuple[str, ...] = Field(default_factory=tuple)
+
+
+class DowngradeRecommendation(BaseModel):
+    """Pareto-optimal model substitution recommendation with quantified trade-offs."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    candidate_model: str
+    display_name: str
+    provider: str
+    open_weights: bool
+    cost_savings_pct: float
+    latency_reduction_pct: float
+    throughput_gain_pct: float
+    benchmark_accuracy_delta: float
+    candidate_gaia_accuracy: float
+    is_pareto_optimal: bool
+    strategy_tier: str
+    input_cost_per_1k: float
+    output_cost_per_1k: float
+
+
+class SessionCandidateProjection(BaseModel):
+    """Quantified financial projection of running a specific session on a candidate model."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    candidate_model: str
+    display_name: str
+    provider: str
+    open_weights: bool
+    projected_session_cost_usd: float = Field(ge=0.0)
+    session_dollar_savings_usd: float
+    cost_savings_pct: float
+    latency_reduction_pct: float
+    projected_annual_savings_10k_sessions_usd: float
+    strategy_tier: str
+    is_pareto_optimal: bool
+
+
+class SessionDowngradeReport(BaseModel):
+    """Session-specific model downgrade financial impact and savings projection."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    session_id: UUID7
+    active_model: str
+    total_prompt_tokens: int = Field(ge=0)
+    total_completion_tokens: int = Field(ge=0)
+    current_session_cost_usd: float = Field(ge=0.0)
+    recommendations: list[SessionCandidateProjection] = Field(default_factory=list)
+

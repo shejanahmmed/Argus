@@ -22,8 +22,11 @@ from argus.core.schemas import (
     AuditVerificationResult,
     CheckpointRecord,
     CircuitBreakerVerdict,
+    DowngradeRecommendation,
     FleetROISummary,
+    ModelBenchmarkProfile,
     PendingToolCall,
+    SessionDowngradeReport,
     TrajectoryEvaluationReport,
     WorkflowROIAttribution,
 )
@@ -322,3 +325,58 @@ class ArgusC2Client:
         path = f"/api/v1/attribution/fleet-roi?default_task_value_usd={default_task_value_usd}"
         data = await self._request("GET", path)
         return FleetROISummary.model_validate(data)
+
+    async def get_benchmark_catalog(self) -> list[ModelBenchmarkProfile]:
+        """Retrieve full Hugging Face Open LLM and GAIA benchmark model profiles."""
+        data = await self._request("GET", "/api/v1/attribution/benchmarks/catalog")
+        return [ModelBenchmarkProfile.model_validate(item) for item in data]
+
+    async def register_benchmark_model(
+        self, profile: ModelBenchmarkProfile
+    ) -> ModelBenchmarkProfile:
+        """Register or update a custom model benchmark profile in the catalog."""
+        data = await self._request(
+            "POST",
+            "/api/v1/attribution/benchmarks/catalog",
+            json_body=profile.model_dump(mode="json"),
+        )
+        return ModelBenchmarkProfile.model_validate(data)
+
+    async def recommend_model_downgrade(
+        self,
+        current_model: str,
+        *,
+        min_acceptable_accuracy: float = 0.50,
+        open_weights_only: bool = False,
+    ) -> list[DowngradeRecommendation]:
+        """Query Pareto-optimal model substitution recommendations."""
+        payload = {
+            "current_model": current_model,
+            "min_acceptable_accuracy": min_acceptable_accuracy,
+            "open_weights_only": open_weights_only,
+        }
+        data = await self._request(
+            "POST", "/api/v1/attribution/benchmarks/recommend", json_body=payload
+        )
+        return [DowngradeRecommendation.model_validate(item) for item in data]
+
+    async def recommend_session_downgrade(
+        self,
+        session_id: uuid.UUID,
+        *,
+        min_acceptable_accuracy: float = 0.50,
+        open_weights_only: bool = False,
+        annual_session_volume: int = 10000,
+    ) -> SessionDowngradeReport:
+        """Analyze session spans and project dollar savings from model substitutions."""
+        payload = {
+            "min_acceptable_accuracy": min_acceptable_accuracy,
+            "open_weights_only": open_weights_only,
+            "annual_session_volume": annual_session_volume,
+        }
+        data = await self._request(
+            "POST",
+            f"/api/v1/attribution/benchmarks/recommend-session/{session_id}",
+            json_body=payload,
+        )
+        return SessionDowngradeReport.model_validate(data)

@@ -1,5 +1,5 @@
-import React from "react";
-import { TrendingUp, Zap, ArrowDownRight, Award, CircleDollarSign } from "lucide-react";
+import React, { useState, useMemo } from "react";
+import { TrendingUp, Zap, ArrowDownRight, Award, CircleDollarSign, Filter } from "lucide-react";
 import {
   WorkflowROIAttribution,
   ModelBenchmarkEntry,
@@ -15,6 +15,7 @@ interface RoiAndBenchmarksProps {
 }
 
 const VALUE_PRESETS = [50, 100, 250, 1000];
+const ACCURACY_PRESETS = [0.5, 0.6, 0.7];
 
 export const RoiAndBenchmarks: React.FC<RoiAndBenchmarksProps> = ({
   roi,
@@ -23,6 +24,32 @@ export const RoiAndBenchmarks: React.FC<RoiAndBenchmarksProps> = ({
   businessValueUsd,
   onChangeBusinessValue,
 }) => {
+  const [openWeightsOnly, setOpenWeightsOnly] = useState<boolean>(false);
+  const [minAccuracy, setMinAccuracy] = useState<number>(0.5);
+
+  const filteredRecommendations = useMemo(() => {
+    return recommendations.filter((rec) => {
+      if (openWeightsOnly && !rec.open_weights) {
+        return false;
+      }
+      if (rec.candidate_gaia_accuracy !== undefined && rec.candidate_gaia_accuracy < minAccuracy) {
+        return false;
+      }
+      return true;
+    });
+  }, [recommendations, openWeightsOnly, minAccuracy]);
+
+  const filteredBenchmarks = useMemo(() => {
+    return benchmarks.filter((m) => {
+      if (openWeightsOnly && !m.open_weights) {
+        return false;
+      }
+      if (m.gaia_accuracy < minAccuracy) {
+        return false;
+      }
+      return true;
+    });
+  }, [benchmarks, openWeightsOnly, minAccuracy]);
   return (
     <div className="rounded-xl border border-zinc-800 bg-[#121215] flex flex-col shadow-sm">
       {/* Header */}
@@ -208,29 +235,77 @@ export const RoiAndBenchmarks: React.FC<RoiAndBenchmarksProps> = ({
 
         {/* Right: Hugging Face Pareto Model Frontier */}
         <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 flex flex-col">
-          <div className="flex items-center justify-between pb-3 mb-3 border-b border-zinc-800">
-            <span className="flex items-center gap-2 text-sm font-medium text-white">
-              <Zap className="h-4 w-4 text-sky-400" />
-              <span>Hugging Face Pareto Frontier</span>
-            </span>
-            <span className="text-xs text-zinc-500">GAIA Benchmark Profiles</span>
+          <div className="flex flex-col gap-2 pb-3 mb-3 border-b border-zinc-800">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-2 text-sm font-medium text-white">
+                <Zap className="h-4 w-4 text-sky-400" />
+                <span>Hugging Face Pareto Frontier</span>
+              </span>
+              <span className="text-xs text-zinc-500">Open LLM & GAIA</span>
+            </div>
+
+            {/* Frontier Controls: Open-Weights toggle & Accuracy threshold */}
+            <div className="flex items-center justify-between gap-2 pt-1 text-[11px]">
+              <button
+                onClick={() => setOpenWeightsOnly(!openWeightsOnly)}
+                className={`flex items-center gap-1 px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+                  openWeightsOnly
+                    ? "bg-purple-500/20 text-purple-300 border-purple-500/40 font-medium"
+                    : "bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-zinc-200"
+                }`}
+              >
+                <Filter className="h-3 w-3" />
+                Open-Weights Only
+              </button>
+
+              <div className="flex items-center gap-1 text-zinc-400">
+                <span>Min Acc:</span>
+                <div className="flex items-center rounded bg-zinc-950 p-0.5 border border-zinc-800">
+                  {ACCURACY_PRESETS.map((acc) => (
+                    <button
+                      key={acc}
+                      onClick={() => setMinAccuracy(acc)}
+                      className={`px-1.5 py-0.5 rounded text-[10px] cursor-pointer transition-colors ${
+                        minAccuracy === acc
+                          ? "bg-zinc-800 text-white font-medium"
+                          : "text-zinc-500 hover:text-zinc-300"
+                      }`}
+                    >
+                      {(acc * 100).toFixed(0)}%
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="space-y-2.5 overflow-y-auto max-h-[300px]">
-            {recommendations.length > 0 ? (
-              recommendations.map((rec, i) => (
+            {filteredRecommendations.length > 0 ? (
+              filteredRecommendations.map((rec, i) => (
                 <div
                   key={i}
                   className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 hover:border-zinc-700 transition-colors"
                 >
                   <div className="flex items-center justify-between text-xs font-medium mb-1.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-zinc-100 font-semibold">{rec.candidate_model}</span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-zinc-100 font-semibold">
+                        {rec.display_name || rec.candidate_model}
+                      </span>
                       <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400 uppercase">
                         {rec.provider}
                       </span>
+                      {rec.open_weights && (
+                        <span className="rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 px-1.5 py-0.2 text-[9px] font-semibold">
+                          OPEN
+                        </span>
+                      )}
+                      {rec.is_pareto_optimal && (
+                        <span className="rounded bg-sky-500/10 text-sky-400 border border-sky-500/20 px-1.5 py-0.2 text-[9px] font-semibold">
+                          PARETO
+                        </span>
+                      )}
                     </div>
-                    <span className="rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 text-xs font-semibold flex items-center gap-0.5">
+                    <span className="rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 text-xs font-semibold flex items-center gap-0.5 shrink-0">
                       <ArrowDownRight className="h-3.5 w-3.5" />
                       -{rec.cost_savings_pct}% spend
                     </span>
@@ -238,6 +313,9 @@ export const RoiAndBenchmarks: React.FC<RoiAndBenchmarksProps> = ({
 
                   <div className="flex items-center justify-between text-xs text-zinc-400 pt-1.5 border-t border-zinc-800/80 font-mono">
                     <span>Latency: -{rec.latency_reduction_pct}%</span>
+                    {rec.throughput_gain_pct !== undefined && rec.throughput_gain_pct > 0 && (
+                      <span className="hidden sm:inline">+{rec.throughput_gain_pct}% tok/s</span>
+                    )}
                     <span>
                       Accuracy:{" "}
                       <span className="text-zinc-200">
@@ -251,14 +329,21 @@ export const RoiAndBenchmarks: React.FC<RoiAndBenchmarksProps> = ({
               ))
             ) : (
               <div className="space-y-2">
-                {benchmarks.map((m, i) => (
+                {filteredBenchmarks.map((m, i) => (
                   <div
                     key={i}
                     className="flex justify-between items-center rounded-lg border border-zinc-800 bg-zinc-950 p-2.5 text-xs"
                   >
-                    <span className="text-zinc-200 font-medium">{m.model_name}</span>
-                    <span className="text-zinc-400 font-mono">
-                      GAIA: {(m.gaia_accuracy * 100).toFixed(0)}% • ${m.input_cost_per_1k}/1K
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-zinc-200 font-medium">{m.display_name || m.model_name}</span>
+                      {m.open_weights && (
+                        <span className="rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 px-1 py-0.2 text-[9px] font-semibold">
+                          OPEN
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-zinc-400 font-mono text-[11px]">
+                      GAIA: {(m.gaia_accuracy * 100).toFixed(0)}% • TTFT: {m.ttft_ms}ms • ${m.input_cost_per_1k}/1K
                     </span>
                   </div>
                 ))}

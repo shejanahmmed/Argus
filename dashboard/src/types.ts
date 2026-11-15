@@ -194,20 +194,56 @@ export interface FleetROISummary {
 
 export interface ModelBenchmarkEntry {
   model_name: string;
+  display_name?: string;
   provider: string;
+  open_weights?: boolean;
   gaia_accuracy: number;
+  open_llm_score?: number;
   ttft_ms: number;
   throughput_tokens_sec: number;
   input_cost_per_1k: number;
   output_cost_per_1k: number;
+  context_window_tokens?: number;
+  aliases?: string[];
 }
 
 export interface DowngradeRecommendation {
   candidate_model: string;
+  display_name?: string;
   provider: string;
+  open_weights?: boolean;
   cost_savings_pct: number;
   latency_reduction_pct: number;
+  throughput_gain_pct?: number;
   benchmark_accuracy_delta: number;
+  candidate_gaia_accuracy?: number;
+  is_pareto_optimal?: boolean;
+  strategy_tier?: string;
+  input_cost_per_1k?: number;
+  output_cost_per_1k?: number;
+}
+
+export interface SessionCandidateProjection {
+  candidate_model: string;
+  display_name: string;
+  provider: string;
+  open_weights: boolean;
+  projected_session_cost_usd: number;
+  session_dollar_savings_usd: number;
+  cost_savings_pct: number;
+  latency_reduction_pct: number;
+  projected_annual_savings_10k_sessions_usd: number;
+  strategy_tier: string;
+  is_pareto_optimal: boolean;
+}
+
+export interface SessionDowngradeReport {
+  session_id: string;
+  active_model: string;
+  total_prompt_tokens: number;
+  total_completion_tokens: number;
+  current_session_cost_usd: number;
+  recommendations: SessionCandidateProjection[];
 }
 
 export interface ContainerLog {

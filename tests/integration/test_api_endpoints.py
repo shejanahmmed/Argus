@@ -1413,3 +1413,104 @@ async def test_attribution_roi_evaluation_and_fleet_summary_lifecycle(
         assert len(fleet.sessions) >= 1
 
 
+@pytest.mark.asyncio
+async def test_hf_benchmark_catalog_and_session_projection_lifecycle(
+    auth_headers: dict[str, str],
+) -> None:
+    session_id = new_uuid7()
+    ctx = TenantContext(
+        tenant_id=auth_headers["X-Tenant-ID"],
+        workspace_id=auth_headers["X-Workspace-ID"],
+        actor_id=auth_headers["X-Actor-ID"],
+        role=Role(auth_headers["X-Role"]),
+    )
+    t0 = utc_now()
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        sdk = ArgusC2Client(ctx, client=client)
+
+        # 1. Fetch baseline benchmark catalog via SDK
+        catalog = await sdk.get_benchmark_catalog()
+        assert len(catalog) >= 10
+        model_names = [m.model_name for m in catalog]
+        assert "deepseek-v3" in model_names
+        assert "claude-3-5-sonnet" in model_names
+        assert "qwen-2-5-72b" in model_names
+
+        # 2. Register a custom local model profile via SDK
+        from argus.core.schemas import ModelBenchmarkProfile
+
+        custom_profile = ModelBenchmarkProfile(
+            model_name="vllm-qwen-coder-custom",
+            display_name="Qwen Coder Custom (vLLM)",
+            provider="self-hosted",
+            open_weights=True,
+            gaia_accuracy=0.64,
+            open_llm_score=77.5,
+            ttft_ms=150.0,
+            throughput_tokens_sec=105.0,
+            input_cost_per_1k=0.00008,
+            output_cost_per_1k=0.00015,
+            context_window_tokens=128000,
+            aliases=("vllm-custom",),
+        )
+        registered = await sdk.register_benchmark_model(custom_profile)
+        assert registered.model_name == "vllm-qwen-coder-custom"
+
+        # 3. Request Pareto downgrade recommendations for Claude-3.5-Sonnet
+        recs = await sdk.recommend_model_downgrade(
+            current_model="claude-3-5-sonnet",
+            min_acceptable_accuracy=0.55,
+            open_weights_only=True,
+        )
+        assert len(recs) >= 1
+        for r in recs:
+            assert r.open_weights is True
+            assert r.cost_savings_pct > 20.0
+
+        # 4. Ingest session with token usage to project session dollar savings
+        await sdk.register_session(
+            session_id=session_id,
+            workflow_id="wf_benchmark_test",
+            agent_name="benchmark_agent",
+            framework=AgentFramework.LANGGRAPH,
+        )
+        span_id = new_uuid7()
+        span = ArgusSpan(
+            tenant_id=ctx.tenant_id,
+            workspace_id=ctx.workspace_id,
+            session_id=session_id,
+            trace_id=new_uuid7(),
+            span_id=span_id,
+            parent_span_id=None,
+            dotted_order=build_dotted_order(t0, span_id),
+            name="chat_step",
+            span_kind=SpanKind.LLM,
+            operation_name=OperationName.CHAT,
+            model_name="claude-3-5-sonnet",
+            prompt_tokens=10000,
+            completion_tokens=3000,
+            started_at=t0,
+        )
+        await sdk.sync_spans([span])
+
+        # 5. Project session-specific model downgrade savings via SDK
+        downgrade_report = await sdk.recommend_session_downgrade(
+            session_id=session_id,
+            min_acceptable_accuracy=0.55,
+            annual_session_volume=12000,
+        )
+        assert downgrade_report.session_id == session_id
+        assert downgrade_report.active_model == "claude-3-5-sonnet"
+        assert downgrade_report.total_prompt_tokens == 10000
+        assert downgrade_report.total_completion_tokens == 3000
+        assert downgrade_report.current_session_cost_usd > 0.05
+        assert len(downgrade_report.recommendations) >= 1
+
+        top_cand = downgrade_report.recommendations[0]
+        assert top_cand.session_dollar_savings_usd > 0.0
+        assert top_cand.projected_annual_savings_10k_sessions_usd > 0.0
+
+

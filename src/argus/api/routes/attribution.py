@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import uuid
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from argus.api.dependencies import AppContainer, get_container, get_tenant_context
 from argus.core.schemas import (
+    DowngradeRecommendation,
     FleetROISummary,
+    ModelBenchmarkProfile,
+    SessionDowngradeReport,
     TrajectoryEvaluationReport,
     WorkflowROIAttribution,
 )
@@ -22,6 +25,13 @@ router = APIRouter(prefix="/api/v1/attribution", tags=["Attribution & Benchmarks
 class RecommendRequest(BaseModel):
     current_model: str
     min_acceptable_accuracy: float = Field(default=0.50, ge=0.0, le=1.0)
+    open_weights_only: bool = Field(default=False)
+
+
+class SessionRecommendRequest(BaseModel):
+    min_acceptable_accuracy: float = Field(default=0.50, ge=0.0, le=1.0)
+    open_weights_only: bool = Field(default=False)
+    annual_session_volume: int = Field(default=10000, ge=1)
 
 
 class TrajectoryEvaluationRequest(BaseModel):
@@ -92,32 +102,52 @@ async def get_fleet_roi_summary(
     return container.roi_engine.calculate_fleet_roi(ctx, rois)
 
 
-@router.get("/benchmarks/catalog", response_model=list[dict[str, Any]])
+@router.get("/benchmarks/catalog", response_model=list[ModelBenchmarkProfile])
 async def get_benchmark_catalog(
     container: Annotated[AppContainer, Depends(get_container)],
-) -> list[dict[str, Any]]:
-    """Retrieve full Hugging Face baseline benchmark model profiles."""
-    return [
-        {
-            "model_name": m.model_name,
-            "provider": m.provider,
-            "gaia_accuracy": m.gaia_accuracy,
-            "ttft_ms": m.ttft_ms,
-            "throughput_tokens_sec": m.throughput_tokens_sec,
-            "input_cost_per_1k": m.input_cost_per_1k,
-            "output_cost_per_1k": m.output_cost_per_1k,
-        }
-        for m in container.benchmark_analyzer._catalog
-    ]
+) -> list[ModelBenchmarkProfile]:
+    """Retrieve full Hugging Face Open LLM and GAIA benchmark model profiles."""
+    return container.benchmark_analyzer.catalog
 
 
-@router.post("/benchmarks/recommend", response_model=list[dict[str, Any]])
+@router.post("/benchmarks/catalog", response_model=ModelBenchmarkProfile)
+async def register_benchmark_profile(
+    profile: ModelBenchmarkProfile,
+    container: Annotated[AppContainer, Depends(get_container)],
+) -> ModelBenchmarkProfile:
+    """Register or update a custom model benchmark profile in the catalog."""
+    return container.benchmark_analyzer.register_model(profile)
+
+
+@router.post("/benchmarks/recommend", response_model=list[DowngradeRecommendation])
 async def recommend_model_downgrade(
     payload: RecommendRequest,
     container: Annotated[AppContainer, Depends(get_container)],
-) -> list[dict[str, Any]]:
-    """Recommend high-efficiency model substitutions satisfying minimum quality constraints."""
+) -> list[DowngradeRecommendation]:
+    """Recommend Pareto-optimal model substitutions satisfying quality and latency constraints."""
     return container.benchmark_analyzer.get_pareto_recommendations(
         current_model_name=payload.current_model,
         min_acceptable_accuracy=payload.min_acceptable_accuracy,
+        open_weights_only=payload.open_weights_only,
+    )
+
+
+@router.post(
+    "/benchmarks/recommend-session/{session_id}",
+    response_model=SessionDowngradeReport,
+)
+async def recommend_downgrade_for_session(
+    session_id: uuid.UUID,
+    payload: SessionRecommendRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    container: Annotated[AppContainer, Depends(get_container)],
+) -> SessionDowngradeReport:
+    """Analyze session spans and project dollar savings from model substitutions."""
+    spans = await container.trace_store.get_session_spans(ctx, session_id)
+    return container.benchmark_analyzer.analyze_session_downgrade(
+        spans,
+        session_id=session_id,
+        min_acceptable_accuracy=payload.min_acceptable_accuracy,
+        open_weights_only=payload.open_weights_only,
+        annual_session_volume=payload.annual_session_volume,
     )
