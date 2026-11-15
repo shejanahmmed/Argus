@@ -11,6 +11,7 @@ import pytest
 from argus.adapters_infra.in_memory import (
     InMemoryAuditStore,
     InMemoryControlStore,
+    InMemoryEventBus,
     InMemoryTraceStore,
 )
 from argus.c2.lease_manager import C2LeaseManager
@@ -119,6 +120,166 @@ async def test_c2_lease_manager_and_dead_man_switch() -> None:
     assert len(audit_entries) == 1
     assert audit_entries[0].event_type == "C2_DEAD_MAN_SWITCH_TERMINATED"
     assert await audit_store.verify_session_chain(ctx, session_id) is True
+
+
+@pytest.mark.asyncio
+async def test_c2_lease_manager_extended_lifecycle() -> None:
+    control_store = InMemoryControlStore()
+    audit_store = InMemoryAuditStore()
+    event_bus = InMemoryEventBus()
+    lease_mgr = C2LeaseManager(
+        control_store=control_store,
+        audit_store=audit_store,
+        event_bus=event_bus,
+        min_ttl_seconds=5.0,
+        max_ttl_seconds=60.0,
+    )
+
+    ctx = TenantContext(
+        tenant_id="tenant_ext",
+        workspace_id="ws_ext",
+        actor_id="worker_ext_1",
+        role=Role.OPERATOR,
+    )
+    session_id = new_uuid7()
+    session = AgentSession(
+        session_id=session_id,
+        tenant_id=ctx.tenant_id,
+        workspace_id=ctx.workspace_id,
+        workflow_id="wf_ext",
+        agent_name="extended_agent",
+        framework=AgentFramework.LANGGRAPH,
+        budget_cap_usd=50.0,
+    )
+    await control_store.create_session(ctx, session)
+
+    t0 = utc_now()
+    # 1. Test TTL clamping: requested 1.0s clamped to min 5.0s
+    hb = await lease_mgr.renew_lease(
+        ctx,
+        session_id=session_id,
+        worker_id="worker-node-x",
+        ttl_seconds=1.0,
+        pending_tool_calls_count=2,
+        now=t0,
+    )
+    assert hb.directive == "CONTINUE"
+    assert hb.ttl_remaining_seconds == 5.0
+    assert hb.pending_tool_calls_count == 2
+    assert "RUNNING" in (hb.directive_reason or "")
+
+    # 2. Querying lease
+    summary = await lease_mgr.get_lease(ctx, session_id, now=t0)
+    assert summary.worker_id == "worker-node-x"
+    assert summary.ttl_seconds == 5.0
+    assert summary.is_expired is False
+
+    leases = await lease_mgr.list_leases(ctx, active_only=True, now=t0)
+    assert len(leases) == 1
+    assert leases[0].session_id == session_id
+
+    # 3. Dry-run reap after expiration: identifies session without state mutation
+    t_expired = t0 + timedelta(seconds=10)
+    dry_reaped = await lease_mgr.reap_expired_leases(ctx, dry_run=True, now=t_expired)
+    assert dry_reaped == [session_id]
+
+    still_running = await control_store.get_session(ctx, session_id)
+    assert still_running.status == SessionStatus.RUNNING
+
+    # 4. Real reap: transitions to TERMINATED, records audit, removes lease
+    real_reaped = await lease_mgr.reap_expired_leases(ctx, dry_run=False, now=t_expired)
+    assert real_reaped == [session_id]
+
+    term_session = await control_store.get_session(ctx, session_id)
+    assert term_session.status == SessionStatus.TERMINATED
+
+    # Re-renewing on TERMINATED session returns directive TERMINATE without re-adding lease
+    hb_term = await lease_mgr.renew_lease(
+        ctx,
+        session_id=session_id,
+        worker_id="worker-node-x",
+        now=t_expired,
+    )
+    assert hb_term.directive == "TERMINATE"
+    assert session_id not in lease_mgr._leases
+
+    # 5. Graceful release test on second session
+    session_id_2 = new_uuid7()
+    session_2 = AgentSession(
+        session_id=session_id_2,
+        tenant_id=ctx.tenant_id,
+        workspace_id=ctx.workspace_id,
+        workflow_id="wf_ext_2",
+        agent_name="graceful_agent",
+        framework=AgentFramework.CREWAI,
+        budget_cap_usd=25.0,
+    )
+    await control_store.create_session(ctx, session_2)
+    await lease_mgr.renew_lease(
+        ctx,
+        session_id=session_id_2,
+        worker_id="worker-node-y",
+        ttl_seconds=30.0,
+        now=t0,
+    )
+
+    released = await lease_mgr.release_lease(
+        ctx,
+        session_id=session_id_2,
+        worker_id="worker-node-y",
+        reason="Clean task shutdown",
+        now=t0,
+    )
+    assert released is True
+    assert session_id_2 not in lease_mgr._leases
+
+    audit_entries_2 = await audit_store.get_session_audit_log(ctx, session_id_2)
+    assert len(audit_entries_2) == 1
+    assert audit_entries_2[0].event_type == "C2_WORKER_LEASE_RELEASED"
+
+    # 6. Fleet-wide reaper test across multiple tenants
+    t_fleet_start = utc_now()
+    ctx_a = TenantContext(tenant_id="tenant_a", workspace_id="ws_a", actor_id="a", role=Role.ADMIN)
+    ctx_b = TenantContext(tenant_id="tenant_b", workspace_id="ws_b", actor_id="b", role=Role.ADMIN)
+    sid_a, sid_b = new_uuid7(), new_uuid7()
+
+    await control_store.create_session(
+        ctx_a,
+        AgentSession(
+            session_id=sid_a,
+            tenant_id="tenant_a",
+            workspace_id="ws_a",
+            workflow_id="wf_a",
+            agent_name="agent_a",
+            framework=AgentFramework.LANGGRAPH,
+            budget_cap_usd=50.0,
+        ),
+    )
+    await control_store.create_session(
+        ctx_b,
+        AgentSession(
+            session_id=sid_b,
+            tenant_id="tenant_b",
+            workspace_id="ws_b",
+            workflow_id="wf_b",
+            agent_name="agent_b",
+            framework=AgentFramework.LANGGRAPH,
+            budget_cap_usd=50.0,
+        ),
+    )
+    await lease_mgr.renew_lease(
+        ctx_a, session_id=sid_a, worker_id="pod_a", ttl_seconds=10.0, now=t_fleet_start
+    )
+    await lease_mgr.renew_lease(
+        ctx_b, session_id=sid_b, worker_id="pod_b", ttl_seconds=10.0, now=t_fleet_start
+    )
+
+    fleet_reaped = await lease_mgr.reap_expired_leases_fleet(
+        now=t_fleet_start + timedelta(seconds=15)
+    )
+    assert set(fleet_reaped) == {sid_a, sid_b}
+    assert (await control_store.get_session(ctx_a, sid_a)).status == SessionStatus.TERMINATED
+    assert (await control_store.get_session(ctx_b, sid_b)).status == SessionStatus.TERMINATED
 
 
 class _FailingTraceStore(InMemoryTraceStore):

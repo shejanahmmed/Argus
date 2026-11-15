@@ -154,3 +154,22 @@ export interface ContainerLog {
   trace_id: string | null;
   span_id: string | null;
 }
+
+export interface WorkerLease {
+  session_id: string;
+  tenant_id: string;
+  workspace_id: string;
+  worker_id: string;
+  ttl_seconds: number;
+  renewed_at: string;
+  expires_at: string;
+  ttl_remaining_seconds: number;
+  is_expired: boolean;
+  session_status?: SessionStatus | null;
+}
+
+export interface ReapLeasesResponse {
+  reaped_session_ids: string[];
+  reaped_count: number;
+  dry_run: boolean;
+}

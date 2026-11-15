@@ -6,11 +6,11 @@ import contextlib
 import uuid
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from argus.api.dependencies import AppContainer, get_container, get_tenant_context
-from argus.c2.lease_manager import HeartbeatStatus
+from argus.c2.lease_manager import HeartbeatStatus, LeaseSummary
 from argus.c2.presets import get_all_presets
 from argus.core.errors import (
     AuthorizationError,
@@ -84,9 +84,15 @@ class HeartbeatRequest(BaseModel):
     ttl_seconds: float = Field(default=300.0, gt=0.0)
 
 
+class ReleaseLeaseRequest(BaseModel):
+    worker_id: str = Field(min_length=1, max_length=128)
+    reason: str | None = Field(default=None, max_length=512)
+
+
 class ReapLeasesResponse(BaseModel):
     reaped_session_ids: list[str]
     reaped_count: int
+    dry_run: bool = False
 
 
 @router.get("/presets", response_model=list[StatePreset])
@@ -615,28 +621,74 @@ async def worker_heartbeat(
     container: Annotated[AppContainer, Depends(get_container)],
 ) -> HeartbeatStatus:
     """Renew an agent worker lease and return live C2 control directives."""
+    pending_count = len(container.pending_tool_calls.get(str(session_id), []))
     return await container.lease_manager.renew_lease(
         ctx=ctx,
         session_id=session_id,
         worker_id=payload.worker_id,
         ttl_seconds=payload.ttl_seconds,
+        pending_tool_calls_count=pending_count,
     )
+
+
+@router.get("/leases", response_model=list[LeaseSummary])
+async def list_worker_leases(
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    container: Annotated[AppContainer, Depends(get_container)],
+    active_only: bool = Query(default=True),
+) -> list[LeaseSummary]:
+    """List active or all worker leases within the caller's tenant/workspace."""
+    return await container.lease_manager.list_leases(ctx=ctx, active_only=active_only)
+
+
+@router.get("/{session_id}/lease", response_model=LeaseSummary)
+async def get_worker_lease(
+    session_id: uuid.UUID,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    container: Annotated[AppContainer, Depends(get_container)],
+) -> LeaseSummary:
+    """Inspect the active worker lease for an autonomous agent session."""
+    return await container.lease_manager.get_lease(ctx=ctx, session_id=session_id)
+
+
+@router.post("/{session_id}/release-lease")
+async def release_worker_lease(
+    session_id: uuid.UUID,
+    payload: ReleaseLeaseRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    container: Annotated[AppContainer, Depends(get_container)],
+) -> dict[str, Any]:
+    """Voluntarily release a worker lease upon graceful agent shutdown."""
+    released = await container.lease_manager.release_lease(
+        ctx=ctx,
+        session_id=session_id,
+        worker_id=payload.worker_id,
+        reason=payload.reason,
+    )
+    return {
+        "status": "RELEASED" if released else "NOT_FOUND",
+        "session_id": str(session_id),
+        "worker_id": payload.worker_id,
+    }
 
 
 @router.post("/leases/reap", response_model=ReapLeasesResponse)
 async def reap_expired_worker_leases(
     ctx: Annotated[TenantContext, Depends(get_tenant_context)],
     container: Annotated[AppContainer, Depends(get_container)],
+    dry_run: bool = Query(default=False),
 ) -> ReapLeasesResponse:
     """Execute the Dead-Man's Switch reaper on expired worker leases."""
-    reaped = await container.lease_manager.reap_expired_leases(ctx=ctx)
-    for sid in reaped:
-        await container.event_bus.publish(
-            ctx,
-            channel="c2.lease_expired",
-            event={"session_id": str(sid), "new_status": "TERMINATED"},
-        )
+    reaped = await container.lease_manager.reap_expired_leases(ctx=ctx, dry_run=dry_run)
+    if not dry_run:
+        for sid in reaped:
+            await container.event_bus.publish(
+                ctx,
+                channel="c2.lease_expired",
+                event={"session_id": str(sid), "new_status": "TERMINATED"},
+            )
     return ReapLeasesResponse(
         reaped_session_ids=[str(sid) for sid in reaped],
         reaped_count=len(reaped),
+        dry_run=dry_run,
     )

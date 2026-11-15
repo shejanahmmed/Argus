@@ -10,8 +10,11 @@ import {
   Sparkles,
   SlidersHorizontal,
   CheckCircle2,
+  Radio,
+  Timer,
+  Activity,
 } from "lucide-react";
-import { PendingToolCall, CheckpointRecord, AuditLogResponse } from "../types";
+import { PendingToolCall, CheckpointRecord, AuditLogResponse, WorkerLease } from "../types";
 
 interface C2ControlPanelProps {
   sessionId: string | null;
@@ -20,11 +23,13 @@ interface C2ControlPanelProps {
   latestCheckpoint: CheckpointRecord | null;
   auditLog: AuditLogResponse | null;
   statusMessage: string | null;
+  activeLease?: WorkerLease | null;
   onApproveTool: (toolCallId: string) => void;
   onEditTool: (toolCallId: string, modifiedArgs: Record<string, unknown>) => void;
   onMockTool: (toolCallId: string, mockOutput: Record<string, unknown>) => void;
   onRejectTool: (toolCallId: string, reason: string) => void;
   onApplyPatch: (patchesJson: string) => void;
+  onReapLeases?: () => void;
 }
 
 const PATCH_PRESETS: Array<{ label: string; patch: string }> = [
@@ -73,11 +78,13 @@ export const C2ControlPanel: React.FC<C2ControlPanelProps> = ({
   latestCheckpoint,
   auditLog,
   statusMessage,
+  activeLease,
   onApproveTool,
   onEditTool,
   onMockTool,
   onRejectTool,
   onApplyPatch,
+  onReapLeases,
 }) => {
   const [selectedToolId, setSelectedToolId] = useState<string | null>(null);
   const [editArgsText, setEditArgsText] = useState<string>("");
@@ -130,6 +137,46 @@ export const C2ControlPanel: React.FC<C2ControlPanelProps> = ({
             {pendingTools.length} Pending
           </span>
         </div>
+      </div>
+
+      {/* Worker Lease & Dead-Man's Switch Bar */}
+      <div className="px-5 py-2.5 bg-zinc-950/70 border-b border-zinc-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 text-zinc-400">
+            <Radio className="h-3.5 w-3.5 text-zinc-500" />
+            <span className="font-mono text-zinc-300">
+              Worker Lease: {activeLease ? activeLease.worker_id : "No Active Lease"}
+            </span>
+          </div>
+
+          {activeLease && (
+            <span
+              className={`inline-flex items-center gap-1 rounded px-2 py-0.5 font-mono text-[11px] border ${
+                activeLease.is_expired
+                  ? "border-rose-500/30 bg-rose-500/10 text-rose-400"
+                  : "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+              }`}
+            >
+              <Timer className="h-3 w-3" />
+              <span>
+                {activeLease.is_expired
+                  ? "EXPIRED"
+                  : `TTL: ${Math.round(activeLease.ttl_remaining_seconds)}s left`}
+              </span>
+            </span>
+          )}
+        </div>
+
+        {onReapLeases && (
+          <button
+            onClick={onReapLeases}
+            className="flex items-center gap-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-2.5 py-1 text-xs border border-zinc-700/60 transition-colors cursor-pointer"
+            title="Trigger Dead-Man's Switch reaper sweep across expired sessions"
+          >
+            <Activity className="h-3 w-3 text-amber-400" />
+            <span>Dead-Man's Reap</span>
+          </button>
+        )}
       </div>
 
       {/* Status Notice */}

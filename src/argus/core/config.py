@@ -112,6 +112,35 @@ class ArgusSettings(BaseModel):
         default=("truncate", "format", "kill", "wipe", "destroy"),
         description="Additional tool name substrings treated as destructive requiring C2 approval.",
     )
+    # Worker Lease & Dead-Man's Switch Settings
+    lease_default_ttl_seconds: float = Field(
+        default=300.0,
+        ge=5.0,
+        le=86400.0,
+        description="Default worker lease TTL in seconds (default: 5 min).",
+    )
+    lease_max_ttl_seconds: float = Field(
+        default=3600.0,
+        ge=30.0,
+        le=604800.0,
+        description="Maximum permissible worker lease TTL (default: 1 hour).",
+    )
+    lease_min_ttl_seconds: float = Field(
+        default=5.0,
+        ge=1.0,
+        le=300.0,
+        description="Minimum permissible worker lease TTL (default: 5 sec).",
+    )
+    lease_auto_reaper_enabled: bool = Field(
+        default=False,
+        description="Whether to run background autonomous lease reaper loop.",
+    )
+    lease_reap_interval_seconds: float = Field(
+        default=30.0,
+        ge=1.0,
+        le=3600.0,
+        description="Interval between background dead-man lease reaper sweeps in seconds.",
+    )
 
     @classmethod
     def from_env(cls) -> ArgusSettings:
@@ -171,6 +200,9 @@ class ArgusSettings(BaseModel):
         raw_extra = os.environ.get("ARGUS_MCP_EXTRA_DESTRUCTIVE", "").strip()
         extra_destructive = tuple(p.strip() for p in raw_extra.split(",") if p.strip())
 
+        raw_auto_reap = os.environ.get("ARGUS_LEASE_AUTO_REAPER_ENABLED", "").strip().lower()
+        lease_auto_reap = raw_auto_reap in ("1", "true", "yes")
+
         return cls(
             env=env,
             auth_secret=auth_secret,
@@ -191,6 +223,11 @@ class ArgusSettings(BaseModel):
             mcp_enforce_injection_scan=mcp_scan,
             mcp_extra_destructive_patterns=extra_destructive
             or ("truncate", "format", "kill", "wipe", "destroy"),
+            lease_default_ttl_seconds=_get_float("ARGUS_LEASE_DEFAULT_TTL", 300.0),
+            lease_max_ttl_seconds=_get_float("ARGUS_LEASE_MAX_TTL", 3600.0),
+            lease_min_ttl_seconds=_get_float("ARGUS_LEASE_MIN_TTL", 5.0),
+            lease_auto_reaper_enabled=lease_auto_reap,
+            lease_reap_interval_seconds=_get_float("ARGUS_LEASE_REAP_INTERVAL", 30.0),
         )
 
     @model_validator(mode="after")

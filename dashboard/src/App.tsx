@@ -16,6 +16,8 @@ import {
   DowngradeRecommendation,
   ContainerLog,
   ViewMode,
+  WorkerLease,
+  ReapLeasesResponse,
 } from "./types";
 
 export const App: React.FC = () => {
@@ -35,6 +37,7 @@ export const App: React.FC = () => {
   const [benchmarks, setBenchmarks] = useState<ModelBenchmarkEntry[]>([]);
   const [recommendations, setRecommendations] = useState<DowngradeRecommendation[]>([]);
   const [logs, setLogs] = useState<ContainerLog[]>([]);
+  const [activeLease, setActiveLease] = useState<WorkerLease | null>(null);
 
   // Multi-tenant Security Context & Bearer Auth
   const [tenantId, setTenantId] = useState<string>(
@@ -147,6 +150,18 @@ export const App: React.FC = () => {
           const rData: WorkflowROIAttribution = await roiRes.json();
           setRoi(rData);
         }
+
+        try {
+          const leaseRes = await authFetch(`/api/v1/c2/${sessionId}/lease`);
+          if (leaseRes.ok) {
+            const lData: WorkerLease = await leaseRes.json();
+            setActiveLease(lData);
+          } else {
+            setActiveLease(null);
+          }
+        } catch {
+          setActiveLease(null);
+        }
       } catch {
         // Offline fallback
       }
@@ -237,7 +252,9 @@ export const App: React.FC = () => {
               data.channel === "c2.state_changed" ||
               data.channel === "c2.checkpoint_created" ||
               data.channel === "c2.intervention_required" ||
-              data.channel === "c2.override_resolved"
+              data.channel === "c2.override_resolved" ||
+              data.channel === "c2.dead_man_switch_triggered" ||
+              data.channel === "c2.lease_expired"
             ) {
               fetchSessions();
               if (selectedSessionId) fetchSessionDetails(selectedSessionId);
@@ -509,6 +526,27 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleReapLeases = async () => {
+    setStatusMessage("Triggering Dead-Man's Switch reaper sweep...");
+    try {
+      const res = await authFetch("/api/v1/c2/leases/reap", { method: "POST" });
+      if (res.ok) {
+        const data: ReapLeasesResponse = await res.json();
+        setStatusMessage(
+          `Dead-Man's Switch reaper completed: ${data.reaped_count} expired session(s) terminated.`
+        );
+        await fetchSessions();
+        if (selectedSessionId) {
+          await fetchSessionDetails(selectedSessionId);
+        }
+      } else {
+        setStatusMessage("Failed to execute Dead-Man's Switch reaper sweep.");
+      }
+    } catch {
+      setStatusMessage("Failed to execute Dead-Man's Switch reaper sweep.");
+    }
+  };
+
   return (
     <div className="flex flex-col min-h-screen bg-[#09090b] text-[#f4f4f5]">
       <Header
@@ -563,11 +601,13 @@ export const App: React.FC = () => {
               latestCheckpoint={latestCheckpoint}
               auditLog={auditLog}
               statusMessage={statusMessage}
+              activeLease={activeLease}
               onApproveTool={handleApproveTool}
               onEditTool={handleEditTool}
               onMockTool={handleMockTool}
               onRejectTool={handleRejectTool}
               onApplyPatch={handleApplyPatch}
+              onReapLeases={handleReapLeases}
             />
           )}
 

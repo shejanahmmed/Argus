@@ -12,7 +12,7 @@ from typing import Any
 
 import httpx
 
-from argus.c2.lease_manager import HeartbeatStatus
+from argus.c2.lease_manager import HeartbeatStatus, LeaseSummary
 from argus.core.schemas import (
     AgentFramework,
     AgentSession,
@@ -191,3 +191,40 @@ class ArgusC2Client:
             json_body={"worker_id": worker_id, "ttl_seconds": ttl_seconds},
         )
         return HeartbeatStatus.model_validate(data)
+
+    async def release_lease(
+        self,
+        *,
+        session_id: uuid.UUID,
+        worker_id: str,
+        reason: str | None = None,
+    ) -> dict[str, Any]:
+        """Voluntarily release a worker lease upon graceful agent shutdown."""
+        data: dict[str, Any] = await self._request(
+            "POST",
+            f"/api/v1/c2/{session_id}/release-lease",
+            json_body={"worker_id": worker_id, "reason": reason},
+        )
+        return data
+
+    async def get_lease(self, session_id: uuid.UUID) -> LeaseSummary | None:
+        """Inspect the active worker lease for an autonomous agent session."""
+        try:
+            data = await self._request("GET", f"/api/v1/c2/{session_id}/lease")
+            return LeaseSummary.model_validate(data)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return None
+            raise
+
+    async def list_leases(self, *, active_only: bool = True) -> list[LeaseSummary]:
+        """List active or all worker leases within the tenant workspace."""
+        path = f"/api/v1/c2/leases?active_only={'true' if active_only else 'false'}"
+        data = await self._request("GET", path)
+        return [LeaseSummary.model_validate(item) for item in data]
+
+    async def reap_expired_leases(self, *, dry_run: bool = False) -> dict[str, Any]:
+        """Trigger the Dead-Man's Switch reaper sweep for expired leases."""
+        path = f"/api/v1/c2/leases/reap?dry_run={'true' if dry_run else 'false'}"
+        data: dict[str, Any] = await self._request("POST", path)
+        return data

@@ -110,6 +110,9 @@ class AppContainer:
         self.lease_manager = C2LeaseManager(
             control_store=self.control_store,
             audit_store=self.audit_store,
+            event_bus=self.event_bus,
+            min_ttl_seconds=self.settings.lease_min_ttl_seconds,
+            max_ttl_seconds=self.settings.lease_max_ttl_seconds,
         )
         self.tool_override_engine = ToolOverrideEngine()
         self.roi_engine = ROIEngine(trace_store=self.trace_store)

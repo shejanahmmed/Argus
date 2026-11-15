@@ -732,6 +732,74 @@ async def test_bearer_token_and_w3c_baggage_auth_and_lease_reap() -> None:
         )
         assert reap_resp.status_code == 200
         assert reap_resp.json()["reaped_count"] == 0
+        assert reap_resp.json()["dry_run"] is False
+
+
+@pytest.mark.asyncio
+async def test_worker_leases_and_dead_man_switch_api_lifecycle(
+    auth_headers: dict[str, str],
+) -> None:
+    session_id = new_uuid7()
+    ctx = TenantContext(
+        tenant_id=auth_headers["X-Tenant-ID"],
+        workspace_id=auth_headers["X-Workspace-ID"],
+        actor_id=auth_headers["X-Actor-ID"],
+        role=Role(auth_headers["X-Role"]),
+    )
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        sdk = ArgusC2Client(ctx, client=client)
+
+        # 1. Register session
+        session = await sdk.register_session(
+            session_id=session_id,
+            workflow_id="wf_lease_test",
+            agent_name="lease_agent",
+            framework=AgentFramework.LANGGRAPH,
+        )
+        assert session.session_id == session_id
+
+        # 2. Worker heartbeat
+        hb = await sdk.heartbeat(
+            session_id=session_id,
+            worker_id="pod-integration-1",
+            ttl_seconds=45.0,
+        )
+        assert hb.directive == "CONTINUE"
+        assert hb.worker_id == "pod-integration-1"
+        assert hb.ttl_remaining_seconds > 0.0
+
+        # 3. Query active lease via SDK
+        lease = await sdk.get_lease(session_id)
+        assert lease is not None
+        assert lease.worker_id == "pod-integration-1"
+        assert lease.ttl_seconds == 45.0
+        assert lease.is_expired is False
+
+        # 4. List leases via SDK
+        all_leases = await sdk.list_leases(active_only=True)
+        assert len(all_leases) == 1
+        assert all_leases[0].session_id == session_id
+
+        # 5. Dry-run reap sweep
+        dry_reap = await sdk.reap_expired_leases(dry_run=True)
+        assert dry_reap["dry_run"] is True
+        assert dry_reap["reaped_count"] == 0
+
+        # 6. Graceful lease release via SDK
+        release_res = await sdk.release_lease(
+            session_id=session_id,
+            worker_id="pod-integration-1",
+            reason="Work completed gracefully",
+        )
+        assert release_res["status"] == "RELEASED"
+
+        # 7. Verify lease is now gone
+        assert await sdk.get_lease(session_id) is None
+        empty_leases = await sdk.list_leases(active_only=True)
+        assert len(empty_leases) == 0
 
 
 @pytest.mark.asyncio
