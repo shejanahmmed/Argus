@@ -86,7 +86,14 @@ class AppContainer:
 
         self.event_bus: EventBus = InMemoryEventBus()
         self.audit_ledger = C2AuditLedger(audit_store=self.audit_store)
-        self.loop_detector = LoopDetector()
+        self.loop_detector = LoopDetector(
+            window_size=self.settings.loop_window_size,
+            max_exact_repetitions=self.settings.loop_exact_threshold,
+            max_oscillations=self.settings.loop_oscillation_threshold,
+            semantic_threshold=self.settings.loop_semantic_threshold,
+            simhash_max_hamming=self.settings.loop_simhash_max_hamming,
+            max_tracked_sessions=self.settings.loop_max_tracked_sessions,
+        )
         self.budget_guard = BudgetGuard(backend=self.budget_store)
         self.mcp_proxy = McpGovernanceProxy(
             loop_detector=self.loop_detector,

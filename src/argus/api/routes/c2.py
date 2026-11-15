@@ -129,7 +129,7 @@ async def resume_session(
             ctx=ctx,
             session_id=session_id,
         )
-        container.loop_detector.reset_session(str(session_id))
+        container.loop_detector.reset_session(str(session_id), tenant_id=ctx.tenant_id)
         await container.audit_store.append_event(
             ctx,
             session_id=session_id,

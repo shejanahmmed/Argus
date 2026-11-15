@@ -68,6 +68,7 @@ async def check_loop(
     """Evaluate whether an execution step trips the 3-Tier Loop Detector."""
     verdict = container.loop_detector.evaluate_step(
         session_id=str(payload.session_id),
+        tenant_id=ctx.tenant_id,
         tool_name=payload.tool_name,
         tool_args=payload.tool_args,
         thought_text=payload.thought_or_content,
@@ -79,8 +80,13 @@ async def check_loop(
             event={
                 "session_id": str(payload.session_id),
                 "reason": verdict.reason.value,
+                "trip_tier": verdict.trip_tier,
                 "similarity_score": verdict.similarity_score,
+                "hamming_distance": verdict.hamming_distance,
                 "repeated_count": verdict.repeated_count,
+                "wasted_cost_usd": verdict.wasted_cost_usd,
+                "recommended_action": verdict.recommended_action.value,
+                "nudge_instruction": verdict.nudge_instruction,
                 "detail": verdict.diagnostic_message,
             },
         )
@@ -203,8 +209,10 @@ async def intercept_mcp_tool_call(
 @router.post("/reset-loop/{session_id}")
 async def reset_session_loop_tracker(
     session_id: uuid.UUID,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
     container: Annotated[AppContainer, Depends(get_container)],
 ) -> dict[str, str]:
-    """Clear memory tracking buffer for an agent session."""
-    container.loop_detector.reset_session(str(session_id))
+    """Clear memory tracking buffer for an agent session within caller's tenant boundary."""
+    ctx.assert_can_mutate_c2()
+    container.loop_detector.reset_session(str(session_id), tenant_id=ctx.tenant_id)
     return {"status": "ok", "message": f"Loop tracker cleared for session {session_id}"}

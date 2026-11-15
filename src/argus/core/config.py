@@ -50,6 +50,43 @@ class ArgusSettings(BaseModel):
         le=31536000,
         description="Default Bearer token TTL in seconds (default 24h).",
     )
+    # 3-Tier Loop Detector Circuit Breaker Settings
+    loop_window_size: int = Field(
+        default=15,
+        ge=3,
+        le=100,
+        description="Sliding window size for loop observation history.",
+    )
+    loop_exact_threshold: int = Field(
+        default=3,
+        ge=2,
+        le=20,
+        description="Consecutive identical tool calls before tripping Tier 1.",
+    )
+    loop_oscillation_threshold: int = Field(
+        default=2,
+        ge=2,
+        le=10,
+        description="Cycle repetitions (A->B->A->B) before tripping Tier 2.",
+    )
+    loop_semantic_threshold: float = Field(
+        default=0.65,
+        ge=0.1,
+        le=1.0,
+        description="Cosine similarity threshold for Tier 3 semantic stagnation.",
+    )
+    loop_simhash_max_hamming: int = Field(
+        default=3,
+        ge=0,
+        le=16,
+        description="Maximum 64-bit SimHash Hamming distance for near-duplicate match.",
+    )
+    loop_max_tracked_sessions: int = Field(
+        default=10000,
+        ge=100,
+        le=1000000,
+        description="Maximum active sessions retained in loop history LRU cache.",
+    )
 
     @classmethod
     def from_env(cls) -> ArgusSettings:
@@ -82,6 +119,24 @@ class ArgusSettings(BaseModel):
         except ValueError:
             default_ttl = 86400
 
+        def _get_int(var: str, default: int) -> int:
+            val = os.environ.get(var, "").strip()
+            if not val:
+                return default
+            try:
+                return int(val)
+            except ValueError:
+                return default
+
+        def _get_float(var: str, default: float) -> float:
+            val = os.environ.get(var, "").strip()
+            if not val:
+                return default
+            try:
+                return float(val)
+            except ValueError:
+                return default
+
         return cls(
             env=env,
             auth_secret=auth_secret,
@@ -90,6 +145,12 @@ class ArgusSettings(BaseModel):
             db_path=db_path,
             cors_origins=cors_origins or ("*",),
             default_token_ttl_seconds=default_ttl,
+            loop_window_size=_get_int("ARGUS_LOOP_WINDOW_SIZE", 15),
+            loop_exact_threshold=_get_int("ARGUS_LOOP_EXACT_THRESHOLD", 3),
+            loop_oscillation_threshold=_get_int("ARGUS_LOOP_OSCILLATION_THRESHOLD", 2),
+            loop_semantic_threshold=_get_float("ARGUS_LOOP_SEMANTIC_THRESHOLD", 0.65),
+            loop_simhash_max_hamming=_get_int("ARGUS_LOOP_SIMHASH_MAX_HAMMING", 3),
+            loop_max_tracked_sessions=_get_int("ARGUS_LOOP_MAX_TRACKED_SESSIONS", 10000),
         )
 
     @model_validator(mode="after")

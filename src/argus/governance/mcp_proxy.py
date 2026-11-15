@@ -107,8 +107,10 @@ class McpGovernanceProxy:
         # Step 2: 3-Tier Loop Detection Check
         loop_verdict = self._loop_detector.evaluate_step(
             session_id=str(session_id),
+            tenant_id=ctx.tenant_id,
             tool_name=tool_name,
             tool_args=tool_args,
+            step_cost_usd=estimated_cost_usd,
             accumulated_cost_usd=current_spend,
             budget_limit_usd=hard_cap_usd,
         )

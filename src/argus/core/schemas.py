@@ -346,11 +346,15 @@ class CircuitBreakerVerdict(BaseModel):
     tripped: bool
     reason: CircuitBreakerReason = Field(default=CircuitBreakerReason.NONE)
     similarity_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    hamming_distance: int | None = Field(default=None, ge=0, le=64)
     repeated_count: int = Field(default=0, ge=0)
     accumulated_cost_usd: float = Field(default=0.0, ge=0.0)
     budget_limit_usd: float = Field(gt=0.0)
+    wasted_cost_usd: float = Field(default=0.0, ge=0.0)
     recommended_action: CircuitBreakerAction = Field(default=CircuitBreakerAction.ALLOW)
     diagnostic_message: str = Field(default="")
+    nudge_instruction: str | None = Field(default=None)
+    trip_tier: int | None = Field(default=None, ge=1, le=3)
 
 
 class WorkflowROIAttribution(BaseModel):

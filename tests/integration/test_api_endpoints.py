@@ -640,3 +640,79 @@ async def test_bearer_token_and_w3c_baggage_auth_and_lease_reap() -> None:
         )
         assert reap_resp.status_code == 200
         assert reap_resp.json()["reaped_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_governance_check_and_reset_loop_endpoints(auth_headers: dict[str, str]) -> None:
+    session_id = str(new_uuid7())
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        # 1. Step 1: Normal tool call
+        r1 = await client.post(
+            "/api/v1/governance/check-loop",
+            headers=auth_headers,
+            json={
+                "session_id": session_id,
+                "tool_name": "lookup_customer",
+                "tool_args": {"id": 100},
+            },
+        )
+        assert r1.status_code == 200
+        assert not r1.json()["tripped"]
+        assert r1.json()["recommended_action"] == "ALLOW"
+
+        # 2. Step 2 & 3: Repeat tool call -> Trips Tier 1
+        await client.post(
+            "/api/v1/governance/check-loop",
+            headers=auth_headers,
+            json={
+                "session_id": session_id,
+                "tool_name": "lookup_customer",
+                "tool_args": {"id": 100},
+            },
+        )
+        r3 = await client.post(
+            "/api/v1/governance/check-loop",
+            headers=auth_headers,
+            json={
+                "session_id": session_id,
+                "tool_name": "lookup_customer",
+                "tool_args": {"id": 100},
+            },
+        )
+        assert r3.status_code == 200
+        assert r3.json()["tripped"]
+        assert r3.json()["trip_tier"] == 1
+        assert r3.json()["reason"] == "EXACT_TOOL_LOOP"
+        assert r3.json()["recommended_action"] == "PAUSE_FOR_C2"
+
+        # 3. Reset loop with VIEWER role -> 403 Forbidden (requires OPERATOR/ADMIN)
+        viewer_headers = dict(auth_headers)
+        viewer_headers["X-Role"] = "VIEWER"
+        r_reset_forbidden = await client.post(
+            f"/api/v1/governance/reset-loop/{session_id}",
+            headers=viewer_headers,
+        )
+        assert r_reset_forbidden.status_code == 403
+
+        # 4. Reset loop with OPERATOR/ADMIN auth
+        r_reset = await client.post(
+            f"/api/v1/governance/reset-loop/{session_id}",
+            headers=auth_headers,
+        )
+        assert r_reset.status_code == 200
+        assert r_reset.json()["status"] == "ok"
+
+        # 5. Subsequent call is treated as Step 1 (not tripped)
+        r_after = await client.post(
+            "/api/v1/governance/check-loop",
+            headers=auth_headers,
+            json={
+                "session_id": session_id,
+                "tool_name": "lookup_customer",
+                "tool_args": {"id": 100},
+            },
+        )
+        assert r_after.status_code == 200
+        assert not r_after.json()["tripped"]

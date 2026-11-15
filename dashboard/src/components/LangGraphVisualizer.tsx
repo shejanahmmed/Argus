@@ -58,7 +58,8 @@ export const LangGraphVisualizer: React.FC<LangGraphVisualizerProps> = ({
       const toolName = span.attributes?.tool_name as string | undefined;
       const rawKey = toolName || span.name;
       const displayLabel = toolName ? `Tool: ${toolName}` : span.name;
-      const isLoop = (nameCount[rawKey] || 0) >= 3;
+      const loopTrippedAttr = span.attributes?.loop_tripped === "true";
+      const isLoop = loopTrippedAttr || (nameCount[rawKey] || 0) >= 3;
       const isSelected = selectedSpan?.span_id === span.span_id;
 
       if (isLoop) {
@@ -105,7 +106,7 @@ export const LangGraphVisualizer: React.FC<LangGraphVisualizerProps> = ({
                 </span>
                 {isLoop ? (
                   <span className="px-1.5 py-0.5 text-[10px] bg-rose-500/10 text-rose-400 font-medium rounded border border-rose-500/20">
-                    Loop
+                    {span.attributes?.loop_tier ? `Tier ${span.attributes.loop_tier}` : "Loop"}
                   </span>
                 ) : (
                   <span className="text-[11px] text-zinc-400 font-mono">

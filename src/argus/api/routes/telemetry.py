@@ -11,7 +11,13 @@ from pydantic import BaseModel, Field
 
 from argus.api.dependencies import AppContainer, get_container, get_tenant_context
 from argus.core.ids import new_uuid7
-from argus.core.schemas import AgentFramework, AgentSession, ArgusSpan, SessionStatus
+from argus.core.schemas import (
+    AgentFramework,
+    AgentSession,
+    ArgusSpan,
+    CircuitBreakerAction,
+    SessionStatus,
+)
 from argus.core.tenancy import TenantContext
 from argus.ingestors.cloudwatch_logs import CloudWatchLogIngestor, CorrelatedContainerLog
 from argus.ingestors.otlp_receiver import OtlpSpanIngestor
@@ -109,6 +115,7 @@ async def ingest_spans(
 
     tripped = False
     warning_msg: str | None = None
+    processed_spans: list[ArgusSpan] = []
 
     for span in payload.spans:
         ctx.assert_same_tenant(span.tenant_id, span.workspace_id)
@@ -158,36 +165,68 @@ async def ingest_spans(
             or str(span.output_payload.get("content", ""))
         )
 
+        current_span = span
         if tool_name or thought_text:
             loop_verdict = container.loop_detector.evaluate_step(
                 session_id=str(span.session_id),
+                tenant_id=ctx.tenant_id,
                 tool_name=tool_name,
                 tool_args=span.input_payload if tool_name else None,
                 thought_text=thought_text,
+                step_cost_usd=span.cost_usd,
             )
             if loop_verdict.tripped:
                 tripped = True
                 warning_msg = loop_verdict.diagnostic_message
+
+                # Annotate span attributes with loop trip diagnostics
+                updated_attrs = dict(span.attributes)
+                updated_attrs["loop_tripped"] = "true"
+                updated_attrs["loop_reason"] = loop_verdict.reason.value
+                if loop_verdict.trip_tier is not None:
+                    updated_attrs["loop_tier"] = str(loop_verdict.trip_tier)
+                if loop_verdict.wasted_cost_usd > 0.0:
+                    updated_attrs["wasted_cost_usd"] = str(loop_verdict.wasted_cost_usd)
+                current_span = span.model_copy(update={"attributes": updated_attrs})
+
                 await container.event_bus.publish(
                     ctx,
                     channel="governance.circuit_breaker",
                     event={
                         "session_id": str(span.session_id),
                         "reason": loop_verdict.reason.value,
+                        "trip_tier": loop_verdict.trip_tier,
                         "similarity_score": loop_verdict.similarity_score,
+                        "hamming_distance": loop_verdict.hamming_distance,
+                        "wasted_cost_usd": loop_verdict.wasted_cost_usd,
+                        "repeated_count": loop_verdict.repeated_count,
+                        "recommended_action": loop_verdict.recommended_action.value,
+                        "nudge_instruction": loop_verdict.nudge_instruction,
                         "detail": loop_verdict.diagnostic_message,
                     },
                 )
-                with contextlib.suppress(Exception):
-                    await container.control_store.transition_session(
-                        ctx=ctx,
-                        session_id=span.session_id,
-                        expected_status=SessionStatus.RUNNING,
-                        next_status=SessionStatus.TRIPPED_LOOP,
-                    )
+
+                if loop_verdict.recommended_action == CircuitBreakerAction.PAUSE_FOR_C2:
+                    with contextlib.suppress(Exception):
+                        await container.control_store.transition_session(
+                            ctx=ctx,
+                            session_id=span.session_id,
+                            expected_status=SessionStatus.RUNNING,
+                            next_status=SessionStatus.TRIPPED_LOOP,
+                        )
+                elif loop_verdict.recommended_action == CircuitBreakerAction.TERMINATE:
+                    with contextlib.suppress(Exception):
+                        await container.control_store.transition_session(
+                            ctx=ctx,
+                            session_id=span.session_id,
+                            expected_status=SessionStatus.RUNNING,
+                            next_status=SessionStatus.TERMINATED,
+                        )
+
+        processed_spans.append(current_span)
 
     # Persist spans in trace store
-    count = await container.trace_store.append_spans(ctx, payload.spans)
+    count = await container.trace_store.append_spans(ctx, processed_spans)
 
     # Publish real-time telemetry event for WebSocket clients
     await container.event_bus.publish(
