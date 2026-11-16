@@ -265,35 +265,35 @@ export const LangGraphVisualizer: React.FC<LangGraphVisualizerProps> = ({
   );
 
   return (
-    <div className="rounded-xl border border-[#222228] bg-[#111114] flex flex-col shadow-sm">
+    <div className="rounded-xl border border-[#222228] bg-[#111114] flex flex-col shadow-sm overflow-hidden">
       {/* Panel Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#222228] bg-[#0d0d10] rounded-t-xl">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[#18181b] border border-[#27272a] text-zinc-300">
+      <div className="flex flex-wrap items-center justify-between px-4 py-3 border-b border-[#222228] bg-[#0d0d10] rounded-t-xl gap-2.5">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#18181b] border border-[#27272a] text-zinc-300">
             <GitBranch className="h-3.5 w-3.5 text-zinc-400" />
           </div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-xs font-semibold text-zinc-100 uppercase tracking-wider">
+          <div className="flex items-center gap-2 min-w-0">
+            <h2 className="text-xs font-semibold text-zinc-100 uppercase tracking-wider whitespace-nowrap">
               Execution Topology
             </h2>
-            <span className="rounded-full bg-[#18181b] px-2 py-0.5 text-[10px] font-mono font-medium text-zinc-400 border border-[#27272a]">
+            <span className="rounded-md bg-[#18181b] px-2 py-0.5 text-[10px] font-mono font-medium text-zinc-400 border border-[#27272a] whitespace-nowrap shrink-0">
               {spans.length} spans
             </span>
           </div>
           {loopDetectedCount >= 3 && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 px-2 py-0.5 text-[10px] font-mono font-medium text-rose-400 border border-rose-500/20">
-              <AlertCircle className="h-3 w-3" />
+            <span className="inline-flex items-center gap-1 rounded-md bg-rose-500/10 px-2 py-0.5 text-[10px] font-mono font-medium text-rose-400 border border-rose-500/20 whitespace-nowrap shrink-0">
+              <AlertCircle className="h-3 w-3 shrink-0" />
               Loop Detected ({loopDetectedCount} steps)
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {/* View Mode Toggle */}
           <div className="flex items-center rounded-md bg-[#141418] p-0.5 border border-[#222228]">
             <button
               onClick={() => setDisplayMode("DAG")}
-              className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer ${
+              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                 displayMode === "DAG"
                   ? "bg-[#222228] text-white shadow-xs"
                   : "text-zinc-400 hover:text-zinc-200"
@@ -304,7 +304,7 @@ export const LangGraphVisualizer: React.FC<LangGraphVisualizerProps> = ({
             </button>
             <button
               onClick={() => setDisplayMode("WATERFALL")}
-              className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer ${
+              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                 displayMode === "WATERFALL"
                   ? "bg-[#222228] text-white shadow-xs"
                   : "text-zinc-400 hover:text-zinc-200"
@@ -321,7 +321,7 @@ export const LangGraphVisualizer: React.FC<LangGraphVisualizerProps> = ({
               <button
                 onClick={() => setShowExportMenu((prev) => !prev)}
                 disabled={isExporting}
-                className="flex items-center gap-1.5 rounded-md border border-[#222228] bg-[#141418] px-2.5 py-1 text-xs font-medium text-zinc-300 hover:bg-[#1a1a20] hover:text-white transition-colors cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-md border border-[#222228] bg-[#141418] px-2.5 py-1 text-xs font-medium text-zinc-300 hover:bg-[#1a1a20] hover:text-white transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0"
                 title="Export Arize Phoenix & OpenInference Telemetry"
               >
                 <Download className="h-3 w-3 text-orange-400" />
@@ -412,23 +412,23 @@ export const LangGraphVisualizer: React.FC<LangGraphVisualizerProps> = ({
                     : "border-[#222228] bg-[#121215] hover:border-[#2e2e38] hover:bg-[#16161b]"
                 }`}
               >
-                <div className="flex items-center justify-between gap-2 text-xs mb-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-zinc-500 font-mono">#{idx + 1}</span>
-                    <span className="rounded bg-[#1a1a20] px-1.5 py-0.5 text-[9px] font-mono font-medium text-zinc-300 border border-[#27272a]">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs mb-1.5">
+                  <div className="flex flex-wrap items-center gap-2 min-w-0">
+                    <span className="text-[10px] text-zinc-500 font-mono whitespace-nowrap">#{idx + 1}</span>
+                    <span className="rounded-md bg-[#1a1a20] px-1.5 py-0.5 text-[9px] font-mono font-medium text-zinc-300 border border-[#27272a] whitespace-nowrap shrink-0">
                       {span.span_kind}
                     </span>
-                    <span className="font-medium text-zinc-100 text-xs">
+                    <span className="font-medium text-zinc-100 text-xs truncate">
                       {toolName ? `${span.name} (${toolName})` : span.name}
                     </span>
                     {span.redacted && (
-                      <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-mono text-amber-400 border border-amber-500/20">
-                        <ShieldCheck className="h-3 w-3" />
+                      <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-mono text-amber-400 border border-amber-500/20 whitespace-nowrap shrink-0">
+                        <ShieldCheck className="h-3 w-3 shrink-0" />
                         PII Redacted
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-3 text-xs text-zinc-400 font-mono">
+                  <div className="flex items-center gap-3 text-xs text-zinc-400 font-mono whitespace-nowrap shrink-0">
                     <span>{span.latency_ms.toFixed(1)}ms</span>
                     <span className="text-zinc-200">${span.cost_usd.toFixed(4)}</span>
                   </div>
@@ -449,24 +449,24 @@ export const LangGraphVisualizer: React.FC<LangGraphVisualizerProps> = ({
       {selectedSpan && (
         <div className="border-t border-[#222228] bg-[#0d0d10] p-4 text-xs">
           {/* Inspector Header */}
-          <div className="flex items-center justify-between pb-3 mb-3 border-b border-[#222228]">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-5 w-5 items-center justify-center rounded bg-[#18181b] border border-[#27272a] text-zinc-300">
+          <div className="flex flex-wrap items-center justify-between pb-3 mb-3 border-b border-[#222228] gap-2">
+            <div className="flex flex-wrap items-center gap-2.5 min-w-0">
+              <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[#18181b] border border-[#27272a] text-zinc-300">
                 <Code2 className="h-3 w-3 text-zinc-400" />
               </div>
-              <span className="font-medium text-white text-xs">
+              <span className="font-medium text-white text-xs truncate">
                 Span: {selectedSpan.name}
               </span>
-              <span className="rounded bg-[#1a1a20] px-2 py-0.5 text-[10px] font-mono font-medium text-zinc-400 border border-[#27272a]">
+              <span className="rounded-md bg-[#1a1a20] px-2 py-0.5 text-[10px] font-mono font-medium text-zinc-400 border border-[#27272a] whitespace-nowrap shrink-0">
                 {selectedSpan.span_kind} • {selectedSpan.operation_name}
               </span>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <div className="flex items-center rounded-md bg-[#141418] p-0.5 border border-[#222228]">
                 <button
                   onClick={() => setInspectorTab("PAYLOADS")}
-                  className={`rounded px-2.5 py-1 text-xs font-medium cursor-pointer transition-colors ${
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium cursor-pointer transition-colors whitespace-nowrap shrink-0 ${
                     inspectorTab === "PAYLOADS"
                       ? "bg-[#222228] text-white"
                       : "text-zinc-400 hover:text-zinc-200"
@@ -476,7 +476,7 @@ export const LangGraphVisualizer: React.FC<LangGraphVisualizerProps> = ({
                 </button>
                 <button
                   onClick={() => setInspectorTab("ATTRIBUTES")}
-                  className={`rounded px-2.5 py-1 text-xs font-medium cursor-pointer transition-colors ${
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium cursor-pointer transition-colors whitespace-nowrap shrink-0 ${
                     inspectorTab === "ATTRIBUTES"
                       ? "bg-[#222228] text-white"
                       : "text-zinc-400 hover:text-zinc-200"
@@ -489,7 +489,7 @@ export const LangGraphVisualizer: React.FC<LangGraphVisualizerProps> = ({
               {/* Dismiss Button */}
               <button
                 onClick={() => onSelectSpan(null)}
-                className="rounded p-1 text-zinc-400 hover:text-white hover:bg-[#1a1a20] transition-colors cursor-pointer"
+                className="rounded-md p-1 text-zinc-400 hover:text-white hover:bg-[#1a1a20] transition-colors cursor-pointer shrink-0"
                 title="Dismiss inspector"
               >
                 <X className="h-3.5 w-3.5" />
@@ -500,34 +500,34 @@ export const LangGraphVisualizer: React.FC<LangGraphVisualizerProps> = ({
           {/* Quick Metrics Tiles */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-3">
             <div className="rounded-lg border border-[#222228] bg-[#141418] p-2.5">
-              <div className="text-zinc-400 flex items-center gap-1 text-[10px] mb-0.5 font-mono">
-                <DollarSign className="h-3 w-3 text-emerald-400" /> Spend USD
+              <div className="text-zinc-400 flex items-center gap-1 text-[10px] mb-0.5 font-mono whitespace-nowrap">
+                <DollarSign className="h-3 w-3 text-emerald-400 shrink-0" /> Spend USD
               </div>
-              <div className="text-zinc-100 font-mono font-semibold text-xs">
+              <div className="text-zinc-100 font-mono font-semibold text-xs whitespace-nowrap">
                 ${selectedSpan.cost_usd.toFixed(5)}
               </div>
             </div>
             <div className="rounded-lg border border-[#222228] bg-[#141418] p-2.5">
-              <div className="text-zinc-400 flex items-center gap-1 text-[10px] mb-0.5 font-mono">
-                <Clock className="h-3 w-3 text-sky-400" /> Latency
+              <div className="text-zinc-400 flex items-center gap-1 text-[10px] mb-0.5 font-mono whitespace-nowrap">
+                <Clock className="h-3 w-3 text-sky-400 shrink-0" /> Latency
               </div>
-              <div className="text-zinc-100 font-mono font-semibold text-xs">
+              <div className="text-zinc-100 font-mono font-semibold text-xs whitespace-nowrap">
                 {selectedSpan.latency_ms.toFixed(1)} ms
               </div>
             </div>
             <div className="rounded-lg border border-[#222228] bg-[#141418] p-2.5">
-              <div className="text-zinc-400 flex items-center gap-1 text-[10px] mb-0.5 font-mono">
-                <Cpu className="h-3 w-3 text-amber-400" /> Prompt Tokens
+              <div className="text-zinc-400 flex items-center gap-1 text-[10px] mb-0.5 font-mono whitespace-nowrap">
+                <Cpu className="h-3 w-3 text-amber-400 shrink-0" /> Prompt Tokens
               </div>
-              <div className="text-zinc-100 font-mono font-semibold text-xs">
+              <div className="text-zinc-100 font-mono font-semibold text-xs whitespace-nowrap">
                 {selectedSpan.prompt_tokens}
               </div>
             </div>
             <div className="rounded-lg border border-[#222228] bg-[#141418] p-2.5">
-              <div className="text-zinc-400 flex items-center gap-1 text-[10px] mb-0.5 font-mono">
-                <Cpu className="h-3 w-3 text-purple-400" /> Completion Tokens
+              <div className="text-zinc-400 flex items-center gap-1 text-[10px] mb-0.5 font-mono whitespace-nowrap">
+                <Cpu className="h-3 w-3 text-purple-400 shrink-0" /> Completion Tokens
               </div>
-              <div className="text-zinc-100 font-mono font-semibold text-xs">
+              <div className="text-zinc-100 font-mono font-semibold text-xs whitespace-nowrap">
                 {selectedSpan.completion_tokens}
               </div>
             </div>

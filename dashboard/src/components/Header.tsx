@@ -81,7 +81,10 @@ export const Header: React.FC<HeaderProps> = ({
   // Close simulation menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (simMenuRef.current && !simMenuRef.current.contains(e.target as Node)) {
+      if (
+        simMenuRef.current &&
+        !simMenuRef.current.contains(e.target as unknown as HTMLElement)
+      ) {
         setShowSimMenu(false);
       }
     };
@@ -90,6 +93,19 @@ export const Header: React.FC<HeaderProps> = ({
       return () => document.removeEventListener("mousedown", handleClickOutside);
     }
   }, [showSimMenu]);
+
+  // Global Escape key listener to dismiss modals and popovers
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowAuthModal(false);
+        setShowStorageModal(false);
+        setShowSimMenu(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const handleOpenAuth = () => {
     setModalTenant(tenantId);
@@ -116,42 +132,42 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Top Command Bar */}
       <div className="max-w-[1920px] mx-auto px-6 py-2.5 flex flex-wrap items-center justify-between gap-4">
         {/* Left: Brand & Tenant Context */}
-        <div className="flex items-center gap-3">
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[#141418] border border-[#27272a] text-zinc-100 shadow-sm">
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[#141418] border border-[#27272a] text-zinc-100 shadow-sm shrink-0">
             <Shield className="h-3.5 w-3.5 text-emerald-400" />
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold tracking-tight text-white font-sans">Argus</span>
-            <span className="rounded bg-zinc-800/80 px-1.5 py-0.5 text-[10px] font-mono font-medium text-zinc-400 border border-zinc-700/50">
+            <span className="text-sm font-semibold tracking-tight text-white font-sans whitespace-nowrap">Argus</span>
+            <span className="rounded-md bg-zinc-800/80 px-1.5 py-0.5 text-[10px] font-mono font-medium text-zinc-400 border border-zinc-700/50 whitespace-nowrap shrink-0">
               C2
             </span>
             <span className="text-zinc-700 text-xs">|</span>
             <button
               onClick={handleOpenAuth}
               title="Configure Tenant ID, Workspace ID, Operator ID, and Token"
-              className="flex items-center gap-1.5 rounded-md bg-[#141418] hover:bg-[#1a1a20] px-2 py-1 text-[11px] font-mono text-zinc-300 border border-[#222228] transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 rounded-md bg-[#141418] hover:bg-[#1a1a20] px-2 py-1 text-[11px] font-mono text-zinc-300 border border-[#222228] transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
               <span className="text-zinc-400">{tenantId}</span>
               <span className="text-zinc-600">/</span>
               <span className="text-zinc-300">{workspaceId}</span>
               {authToken ? (
-                <Lock className="h-2.5 w-2.5 text-emerald-400 ml-0.5" />
+                <Lock className="h-2.5 w-2.5 text-emerald-400 ml-0.5 shrink-0" />
               ) : (
-                <Key className="h-2.5 w-2.5 text-zinc-500 ml-0.5" />
+                <Key className="h-2.5 w-2.5 text-zinc-500 ml-0.5 shrink-0" />
               )}
             </button>
           </div>
         </div>
 
         {/* Center: Segmented View Navigation */}
-        <nav className="flex items-center gap-0.5 rounded-lg bg-[#0d0d10] p-1 border border-[#222228]">
+        <nav className="flex items-center gap-0.5 rounded-lg bg-[#0d0d10] p-1 border border-[#222228] shrink-0">
           {navTabs.map((tab) => {
             const isActive = activeView === tab.id;
             return (
               <button
                 key={tab.id}
                 onClick={() => onSelectView(tab.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                   isActive
                     ? "bg-[#1e1e24] text-white shadow-xs"
                     : "text-zinc-400 hover:text-zinc-200 hover:bg-[#141418]"
@@ -165,22 +181,22 @@ export const Header: React.FC<HeaderProps> = ({
         </nav>
 
         {/* Right: Simulation Toolkit & System Diagnostics */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {/* Simulation Toolkit Dropdown */}
-          <div className="relative" ref={simMenuRef}>
+          <div className="relative shrink-0" ref={simMenuRef}>
             <button
               onClick={() => setShowSimMenu((prev) => !prev)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border transition-colors cursor-pointer ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                 showSimMenu
                   ? "bg-zinc-800 border-zinc-600 text-white"
                   : "bg-[#141418] border-[#222228] text-zinc-300 hover:text-white hover:border-[#2e2e38]"
               }`}
               title="Simulate agent workloads, circuit breakers, and MCP tool overrides"
             >
-              <FlaskConical className="h-3.5 w-3.5 text-zinc-400" />
+              <FlaskConical className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
               <span>Simulation</span>
               <ChevronDown
-                className={`h-3 w-3 text-zinc-500 transition-transform ${
+                className={`h-3 w-3 text-zinc-500 transition-transform shrink-0 ${
                   showSimMenu ? "rotate-180" : ""
                 }`}
               />
@@ -262,8 +278,8 @@ export const Header: React.FC<HeaderProps> = ({
             title="Click to view live database diagnostics"
             className="flex items-center gap-1.5 rounded-md border border-[#222228] bg-[#141418] hover:bg-[#1a1a20] px-2.5 py-1.5 text-xs cursor-pointer transition-colors"
           >
-            <Database className="h-3.5 w-3.5 text-zinc-400" />
-            <span className="text-[11px] font-mono text-zinc-200">
+            <Database className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+            <span className="text-[11px] font-mono text-zinc-200 whitespace-nowrap">
               {storageBackend === "sqlite"
                 ? "SQLite (WAL)"
                 : storageBackend === "postgres"
@@ -271,7 +287,7 @@ export const Header: React.FC<HeaderProps> = ({
                 : "In-Memory"}
             </span>
             <span
-              className={`h-1.5 w-1.5 rounded-full ${
+              className={`h-1.5 w-1.5 rounded-full shrink-0 ${
                 systemReady ? "bg-emerald-400" : "bg-amber-400"
               }`}
             />
@@ -284,14 +300,14 @@ export const Header: React.FC<HeaderProps> = ({
                 ? "EventBus WebSocket connected and streaming"
                 : "EventBus disconnected"
             }
-            className="flex items-center gap-1.5 rounded-md border border-[#222228] bg-[#141418] px-2.5 py-1.5 text-xs"
+            className="flex items-center gap-1.5 rounded-md border border-[#222228] bg-[#141418] px-2.5 py-1.5 text-xs whitespace-nowrap shrink-0"
           >
             <span
-              className={`h-1.5 w-1.5 rounded-full ${
+              className={`h-1.5 w-1.5 rounded-full shrink-0 ${
                 wsConnected ? "bg-emerald-400" : "bg-rose-400"
               }`}
             />
-            <span className="text-[11px] font-medium text-zinc-400">
+            <span className="text-[11px] font-medium text-zinc-400 whitespace-nowrap">
               {wsConnected ? "Live" : "Offline"}
             </span>
           </div>
@@ -301,16 +317,16 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Streamlined High-Density KPI Ribbon */}
       <div className="border-t border-[#1a1a20] bg-[#0c0c0f] px-6 py-1.5">
         <div className="max-w-[1920px] mx-auto flex flex-wrap items-center justify-between gap-4 text-[11px]">
-          <div className="flex items-center gap-5">
-            <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-5">
+            <div className="flex items-center gap-1.5 whitespace-nowrap shrink-0">
               <span className="text-zinc-500">RUNNING:</span>
               <span className="font-mono font-semibold text-emerald-400">{activeCount}</span>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 whitespace-nowrap shrink-0">
               <span className="text-zinc-500">PAUSED:</span>
               <span className="font-mono font-semibold text-amber-400">{pausedCount}</span>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 whitespace-nowrap shrink-0">
               <span className="text-zinc-500">TRIPPED:</span>
               <span
                 className={`font-mono font-semibold ${
@@ -320,7 +336,7 @@ export const Header: React.FC<HeaderProps> = ({
                 {trippedCount}
               </span>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 whitespace-nowrap shrink-0">
               <span className="text-zinc-500">PENDING C2:</span>
               <span
                 className={`font-mono font-semibold ${
@@ -330,7 +346,7 @@ export const Header: React.FC<HeaderProps> = ({
                 {pendingInterventionsCount}
               </span>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 whitespace-nowrap shrink-0">
               <span className="text-zinc-500">FLEET SPEND:</span>
               <span className="font-mono font-semibold text-zinc-200">
                 ${totalCost.toFixed(4)}
@@ -338,8 +354,8 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-zinc-500 text-[10px] font-mono">
-            <CheckCircle2 className="h-3 w-3 text-emerald-400" />
+          <div className="flex items-center gap-2 text-zinc-500 text-[10px] font-mono whitespace-nowrap shrink-0">
+            <CheckCircle2 className="h-3 w-3 text-emerald-400 shrink-0" />
             <span>$0 Zero-Spend Infrastructure Active</span>
           </div>
         </div>
@@ -347,7 +363,12 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Tenant Context & Security Token Modal */}
       {showAuthModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4">
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowAuthModal(false);
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4"
+        >
           <div className="w-full max-w-md rounded-xl border border-[#27272a] bg-[#111114] p-6 shadow-2xl">
             <div className="flex items-center justify-between pb-4 border-b border-[#222228]">
               <div className="flex items-center gap-2">
@@ -457,7 +478,12 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Persistence Engine Diagnostics Modal */}
       {showStorageModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4">
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowStorageModal(false);
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4"
+        >
           <div className="w-full max-w-lg rounded-xl border border-[#27272a] bg-[#111114] p-6 shadow-2xl">
             <div className="flex items-center justify-between pb-4 border-b border-[#222228]">
               <div className="flex items-center gap-2">

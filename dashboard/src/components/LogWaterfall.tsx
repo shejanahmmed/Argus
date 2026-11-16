@@ -103,28 +103,28 @@ export const LogWaterfall: React.FC<LogWaterfallProps> = ({ logs }) => {
   }, [logs, filter, searchQuery]);
 
   return (
-    <div className="rounded-xl border border-[#222228] bg-[#111114] flex flex-col shadow-sm">
+    <div className="rounded-xl border border-[#222228] bg-[#111114] flex flex-col shadow-sm overflow-hidden">
       {/* Panel Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-3 border-b border-[#222228] bg-[#0d0d10] rounded-t-xl gap-3">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[#18181b] border border-[#27272a] text-zinc-300">
+      <div className="flex flex-wrap items-center justify-between px-4 py-3 border-b border-[#222228] bg-[#0d0d10] gap-2.5">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#18181b] border border-[#27272a] text-zinc-300">
             <Terminal className="h-3.5 w-3.5 text-zinc-400" />
           </div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-xs font-semibold text-zinc-100 uppercase tracking-wider">
+          <div className="flex items-center gap-2 min-w-0">
+            <h2 className="text-xs font-semibold text-zinc-100 uppercase tracking-wider whitespace-nowrap">
               Container Log Stream
             </h2>
-            <span className="rounded-full bg-[#18181b] px-2 py-0.5 text-[10px] font-mono font-medium text-zinc-400 border border-[#27272a]">
+            <span className="rounded-md bg-[#18181b] px-2 py-0.5 text-[10px] font-mono font-medium text-zinc-400 border border-[#27272a] whitespace-nowrap shrink-0">
               {logs.length} entries
             </span>
           </div>
         </div>
 
         {/* Live Tail Toggle */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => setAutoScroll((prev) => !prev)}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-mono border transition-colors cursor-pointer ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-mono border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               autoScroll
                 ? "bg-[#18181b] border-emerald-500/40 text-emerald-400"
                 : "bg-[#141418] border-[#222228] text-zinc-400 hover:text-zinc-200"
@@ -138,9 +138,9 @@ export const LogWaterfall: React.FC<LogWaterfallProps> = ({ logs }) => {
       </div>
 
       {/* Filter & Search Toolbar */}
-      <div className="px-4 py-2 border-b border-[#1f1f26] bg-[#0f0f13] flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center justify-between">
+      <div className="px-4 py-2.5 border-b border-[#1f1f26] bg-[#0f0f13] flex flex-col gap-2">
         {/* Search Input */}
-        <div className="relative flex-1">
+        <div className="relative w-full">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500" />
           <input
             type="text"
@@ -160,10 +160,10 @@ export const LogWaterfall: React.FC<LogWaterfallProps> = ({ logs }) => {
         </div>
 
         {/* Filter Pills */}
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1 shrink-0 overflow-x-auto w-full pb-0.5">
           <button
             onClick={() => setFilter("ALL")}
-            className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer ${
+            className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               filter === "ALL"
                 ? "bg-[#222228] text-white border border-zinc-600/80 shadow-2xs"
                 : "text-zinc-500 hover:text-zinc-300 hover:bg-[#141418]"
@@ -173,7 +173,7 @@ export const LogWaterfall: React.FC<LogWaterfallProps> = ({ logs }) => {
           </button>
           <button
             onClick={() => setFilter("ANOMALIES")}
-            className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer ${
+            className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               filter === "ANOMALIES"
                 ? "bg-[#222228] text-white border border-zinc-600/80 shadow-2xs"
                 : "text-zinc-500 hover:text-zinc-300 hover:bg-[#141418]"
@@ -183,7 +183,7 @@ export const LogWaterfall: React.FC<LogWaterfallProps> = ({ logs }) => {
           </button>
           <button
             onClick={() => setFilter("CORRELATED")}
-            className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer ${
+            className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               filter === "CORRELATED"
                 ? "bg-[#222228] text-white border border-zinc-600/80 shadow-2xs"
                 : "text-zinc-500 hover:text-zinc-300 hover:bg-[#141418]"
@@ -245,13 +245,13 @@ export const LogWaterfall: React.FC<LogWaterfallProps> = ({ logs }) => {
                     </span>
 
                     {/* Timestamp */}
-                    <span className="text-[10px] text-zinc-500 shrink-0">
+                    <span className="text-[10px] text-zinc-500 shrink-0 whitespace-nowrap">
                       {new Date(log.timestamp).toLocaleTimeString()}
                     </span>
 
                     {/* Level Badge */}
                     <span
-                      className={`rounded px-1.5 py-0.5 text-[9px] font-mono font-medium border uppercase shrink-0 ${
+                      className={`rounded-md px-1.5 py-0.5 text-[9px] font-mono font-medium border uppercase shrink-0 whitespace-nowrap ${
                         isError
                           ? "border-rose-500/30 bg-rose-500/10 text-rose-400"
                           : isWarn
@@ -263,20 +263,20 @@ export const LogWaterfall: React.FC<LogWaterfallProps> = ({ logs }) => {
                     </span>
 
                     {/* Stream Tag */}
-                    <span className="text-zinc-400 font-sans font-medium text-xs truncate max-w-[140px]">
+                    <span className="text-zinc-400 font-sans font-medium text-xs truncate max-w-[140px] whitespace-nowrap">
                       {log.log_stream}
                     </span>
 
                     {/* Correlated IDs */}
                     {log.session_id && (
-                      <span className="rounded bg-[#18181b] border border-[#27272a] px-1.5 py-0.5 text-[10px] font-mono text-purple-400 shrink-0">
+                      <span className="rounded-md bg-[#18181b] border border-[#27272a] px-1.5 py-0.5 text-[10px] font-mono text-purple-400 shrink-0 whitespace-nowrap">
                         sess: {log.session_id.substring(0, 8)}
                       </span>
                     )}
 
                     {log.trace_id && (
-                      <span className="inline-flex items-center gap-1 rounded bg-[#18181b] border border-[#27272a] px-1.5 py-0.5 text-[10px] font-mono text-sky-400 shrink-0">
-                        <Link2 className="h-2.5 w-2.5" />
+                      <span className="inline-flex items-center gap-1 rounded-md bg-[#18181b] border border-[#27272a] px-1.5 py-0.5 text-[10px] font-mono text-sky-400 shrink-0 whitespace-nowrap">
+                        <Link2 className="h-2.5 w-2.5 shrink-0" />
                         trace: {log.trace_id.substring(0, 8)}
                       </span>
                     )}

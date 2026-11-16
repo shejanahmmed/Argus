@@ -144,40 +144,40 @@ export const C2ControlPanel: React.FC<C2ControlPanelProps> = ({
   };
 
   return (
-    <div className="rounded-xl border border-[#222228] bg-[#111114] flex flex-col shadow-sm">
+    <div className="rounded-xl border border-[#222228] bg-[#111114] flex flex-col shadow-sm overflow-hidden">
       {/* Panel Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#222228] bg-[#0d0d10] rounded-t-xl">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[#18181b] border border-[#27272a] text-zinc-300">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-[#222228] bg-[#0d0d10] rounded-t-xl">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#18181b] border border-[#27272a] text-zinc-300">
             <SlidersHorizontal className="h-3.5 w-3.5 text-zinc-400" />
           </div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-xs font-semibold text-zinc-100 uppercase tracking-wider">
-              Human-in-the-Loop C2 Governance
+          <div className="flex items-center gap-2 min-w-0">
+            <h2 className="text-xs font-semibold text-zinc-100 uppercase tracking-wider whitespace-nowrap">
+              Human-in-the-Loop C2
             </h2>
             {sessionId && (
-              <span className="rounded bg-[#18181b] px-2 py-0.5 text-[10px] font-mono text-zinc-400 border border-[#27272a]">
+              <span className="rounded-md bg-[#18181b] px-2 py-0.5 text-[10px] font-mono text-zinc-400 border border-[#27272a] whitespace-nowrap shrink-0">
                 id: {sessionId.substring(0, 8)}
               </span>
             )}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           {auditLog && (
             <span
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-mono font-medium border ${
+              className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-0.5 text-[10px] font-mono font-medium border whitespace-nowrap shrink-0 ${
                 auditLog.chain_verified
                   ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-400"
                   : "border-rose-500/25 bg-rose-500/10 text-rose-400"
               }`}
             >
-              <Lock className="h-3 w-3" />
+              <Lock className="h-3 w-3 shrink-0" />
               <span>SHA-256 Ledger: {auditLog.chain_verified ? "Verified" : "Tampered"}</span>
             </span>
           )}
           <span
-            className={`rounded-full px-2.5 py-0.5 text-[10px] font-mono font-medium border ${
+            className={`rounded-md px-2.5 py-0.5 text-[10px] font-mono font-medium border whitespace-nowrap shrink-0 ${
               pendingTools.length > 0
                 ? "border-amber-500/25 bg-amber-500/10 text-amber-400"
                 : "border-[#27272a] bg-[#141418] text-zinc-400"
@@ -189,24 +189,24 @@ export const C2ControlPanel: React.FC<C2ControlPanelProps> = ({
       </div>
 
       {/* Worker Lease & Dead-Man's Switch Ribbon */}
-      <div className="px-4 py-2 bg-[#0c0c0f] border-b border-[#1f1f26] flex flex-wrap items-center justify-between gap-3 text-xs">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 text-zinc-400">
-            <Radio className="h-3.5 w-3.5 text-zinc-500" />
-            <span className="font-mono text-zinc-300 text-[11px]">
+      <div className="px-4 py-2 bg-[#0c0c0f] border-b border-[#1f1f26] flex flex-wrap items-center justify-between gap-2.5 text-xs">
+        <div className="flex flex-wrap items-center gap-2.5 min-w-0">
+          <div className="flex items-center gap-1.5 text-zinc-400 min-w-0">
+            <Radio className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
+            <span className="font-mono text-zinc-300 text-[11px] whitespace-nowrap">
               Worker Lease: {activeLease ? activeLease.worker_id : "No Active Lease"}
             </span>
           </div>
 
           {activeLease && (
             <span
-              className={`inline-flex items-center gap-1 rounded px-2 py-0.5 font-mono text-[10px] border ${
+              className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-mono text-[10px] border whitespace-nowrap shrink-0 ${
                 activeLease.is_expired
                   ? "border-rose-500/30 bg-rose-500/10 text-rose-400"
                   : "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
               }`}
             >
-              <Timer className="h-3 w-3" />
+              <Timer className="h-3 w-3 shrink-0" />
               <span>
                 {activeLease.is_expired
                   ? "EXPIRED"
@@ -219,10 +219,10 @@ export const C2ControlPanel: React.FC<C2ControlPanelProps> = ({
         {onReapLeases && (
           <button
             onClick={onReapLeases}
-            className="flex items-center gap-1.5 rounded-md bg-[#18181b] hover:bg-[#222228] text-zinc-300 px-2.5 py-1 text-[11px] border border-[#27272a] transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 rounded-md bg-[#18181b] hover:bg-[#222228] text-zinc-300 px-2.5 py-1 text-[11px] border border-[#27272a] transition-colors cursor-pointer whitespace-nowrap shrink-0"
             title="Trigger Dead-Man's Switch reaper sweep across expired sessions"
           >
-            <Activity className="h-3 w-3 text-amber-400" />
+            <Activity className="h-3 w-3 text-amber-400 shrink-0" />
             <span>Dead-Man&apos;s Reap</span>
           </button>
         )}
@@ -237,15 +237,15 @@ export const C2ControlPanel: React.FC<C2ControlPanelProps> = ({
       )}
 
       {/* Dual Column Operations Workspace */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 p-4">
+      <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4 p-4">
         {/* Left Column: Intercepted MCP Tool Queue */}
         <div className="rounded-lg border border-[#222228] bg-[#131317] p-3.5 flex flex-col">
-          <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-[#1f1f26]">
-            <span className="flex items-center gap-2 text-xs font-semibold text-zinc-100 uppercase tracking-wider">
-              <ShieldAlert className="h-3.5 w-3.5 text-amber-400" />
+          <div className="flex flex-wrap items-center justify-between pb-2.5 mb-3 border-b border-[#1f1f26] gap-2">
+            <span className="flex items-center gap-2 text-xs font-semibold text-zinc-100 uppercase tracking-wider whitespace-nowrap">
+              <ShieldAlert className="h-3.5 w-3.5 text-amber-400 shrink-0" />
               <span>Intercepted MCP Tool Calls</span>
             </span>
-            <span className="text-[10px] font-mono text-zinc-500">Cryptographically Bound</span>
+            <span className="text-[10px] font-mono text-zinc-500 whitespace-nowrap">Cryptographically Bound</span>
           </div>
 
           {pendingTools.length === 0 ? (
@@ -471,39 +471,39 @@ export const C2ControlPanel: React.FC<C2ControlPanelProps> = ({
 
         {/* Right Column: RFC 6902 State Mutation */}
         <div className="rounded-lg border border-[#222228] bg-[#131317] p-3.5 flex flex-col">
-          <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-[#1f1f26]">
-            <span className="flex items-center gap-2 text-xs font-semibold text-zinc-100 uppercase tracking-wider">
-              <FileCode className="h-3.5 w-3.5 text-emerald-400" />
+          <div className="flex flex-wrap items-center justify-between pb-2.5 mb-3 border-b border-[#1f1f26] gap-2">
+            <span className="flex items-center gap-2 text-xs font-semibold text-zinc-100 uppercase tracking-wider whitespace-nowrap">
+              <FileCode className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
               <span>RFC 6902 State Mutation</span>
             </span>
-            <span className="text-[10px] text-zinc-500 font-mono">
+            <span className="text-[10px] text-zinc-500 font-mono whitespace-nowrap">
               CP: {latestCheckpoint ? latestCheckpoint.checkpoint_id.substring(0, 8) : "None"}
             </span>
           </div>
 
           <div className="space-y-3 flex-1 flex flex-col">
             {latestCheckpoint ? (
-              <div className="rounded border border-[#222228] bg-[#09090b] p-2.5">
-                <div className="flex justify-between text-[10px] text-zinc-400 mb-1 font-mono">
-                  <span>
+              <div className="rounded-md border border-[#222228] bg-[#09090b] p-2.5">
+                <div className="flex flex-wrap justify-between text-[10px] text-zinc-400 mb-1 font-mono gap-1">
+                  <span className="whitespace-nowrap">
                     State at Step #{latestCheckpoint.step_index} ({latestCheckpoint.node_name})
                   </span>
-                  <span className="text-emerald-400 font-medium">Optimistic Lock Active</span>
+                  <span className="text-emerald-400 font-medium whitespace-nowrap">Optimistic Lock Active</span>
                 </div>
                 <pre className="text-xs text-zinc-300 font-mono max-h-24 overflow-y-auto">
                   {JSON.stringify(latestCheckpoint.memory_state, null, 2)}
                 </pre>
               </div>
             ) : (
-              <div className="rounded border border-dashed border-[#222228] bg-[#09090b]/40 p-3 text-xs text-zinc-500">
+              <div className="rounded-md border border-dashed border-[#222228] bg-[#09090b]/40 p-3 text-xs text-zinc-500">
                 No checkpoint snapshot recorded on current session.
               </div>
             )}
 
             {/* Presets (Zero AI Sparkles) */}
             <div>
-              <div className="text-[10px] text-zinc-400 mb-1.5 font-mono uppercase tracking-wider flex items-center gap-1.5">
-                <Bookmark className="h-3 w-3 text-zinc-400" />
+              <div className="text-[10px] text-zinc-400 mb-1.5 font-mono uppercase tracking-wider flex items-center gap-1.5 whitespace-nowrap">
+                <Bookmark className="h-3 w-3 text-zinc-400 shrink-0" />
                 <span>Patch Presets:</span>
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -511,7 +511,7 @@ export const C2ControlPanel: React.FC<C2ControlPanelProps> = ({
                   <button
                     key={i}
                     onClick={() => setJsonPatchText(preset.patch)}
-                    className="rounded bg-[#18181b] hover:bg-[#222228] text-zinc-300 px-2 py-1 text-[11px] border border-[#27272a] transition-colors cursor-pointer"
+                    className="rounded-md bg-[#18181b] hover:bg-[#222228] text-zinc-300 px-2 py-1 text-[11px] border border-[#27272a] transition-colors cursor-pointer whitespace-nowrap shrink-0"
                   >
                     {preset.label}
                   </button>
@@ -523,18 +523,18 @@ export const C2ControlPanel: React.FC<C2ControlPanelProps> = ({
             <textarea
               value={jsonPatchText}
               onChange={(e) => setJsonPatchText(e.target.value)}
-              className="flex-1 min-h-[120px] w-full rounded border border-[#27272a] bg-[#09090b] p-2.5 text-xs text-zinc-200 font-mono focus:outline-hidden focus:border-zinc-500 resize-none"
+              className="flex-1 min-h-[120px] w-full rounded-md border border-[#27272a] bg-[#09090b] p-2.5 text-xs text-zinc-200 font-mono focus:outline-hidden focus:border-zinc-500 resize-none"
             />
 
-            <div className="flex items-center justify-between pt-1">
-              <span className="text-[11px] text-zinc-500 font-mono">
+            <div className="flex flex-wrap items-center justify-between pt-1 gap-2">
+              <span className="text-[11px] text-zinc-500 font-mono whitespace-nowrap">
                 Status: <strong className="text-zinc-200 font-medium">{sessionStatus || "None"}</strong>
               </span>
 
               <button
                 disabled={!sessionId}
                 onClick={() => onApplyPatch(jsonPatchText)}
-                className="rounded-md bg-white hover:bg-zinc-200 text-zinc-950 px-3.5 py-1.5 text-xs font-semibold shadow-xs transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                className="rounded-md bg-white hover:bg-zinc-200 text-zinc-950 px-3.5 py-1.5 text-xs font-semibold shadow-xs transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
               >
                 Apply State Patch
               </button>
@@ -545,38 +545,38 @@ export const C2ControlPanel: React.FC<C2ControlPanelProps> = ({
 
       {/* Cryptographic SHA-256 Audit Chain Section */}
       <div className="border-t border-[#222228]">
-        <div className="flex items-center justify-between px-4 py-2.5 bg-[#0c0c0f]">
+        <div className="flex flex-wrap items-center justify-between px-4 py-2.5 bg-[#0c0c0f] gap-2">
           <button
             onClick={() => setShowAuditChain(!showAuditChain)}
-            className="flex items-center gap-2 text-xs font-semibold text-zinc-300 hover:text-white transition-colors cursor-pointer"
+            className="flex items-center gap-2 text-xs font-semibold text-zinc-300 hover:text-white transition-colors cursor-pointer whitespace-nowrap"
           >
-            <Lock className="h-3.5 w-3.5 text-zinc-400" />
-            <span className="font-mono text-xs">
+            <Lock className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+            <span className="font-mono text-xs whitespace-nowrap">
               SHA-256 Audit Chain Ledger ({auditLog?.entries.length || 0} blocks)
             </span>
             {showAuditChain ? (
-              <ChevronUp className="h-3.5 w-3.5 text-zinc-400" />
+              <ChevronUp className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
             ) : (
-              <ChevronDown className="h-3.5 w-3.5 text-zinc-400" />
+              <ChevronDown className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
             )}
           </button>
 
           {auditLog && auditLog.entries.length > 0 && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
               <button
                 onClick={() => handleExportAudit("json")}
-                className="flex items-center gap-1 rounded bg-[#18181b] hover:bg-[#222228] text-zinc-300 px-2.5 py-1 text-[11px] font-mono border border-[#27272a] transition-colors cursor-pointer"
+                className="flex items-center gap-1 rounded-md bg-[#18181b] hover:bg-[#222228] text-zinc-300 px-2.5 py-1 text-[11px] font-mono border border-[#27272a] transition-colors cursor-pointer whitespace-nowrap shrink-0"
                 title="Download JSON compliance attestation"
               >
-                <Download className="h-3 w-3 text-zinc-400" />
+                <Download className="h-3 w-3 text-zinc-400 shrink-0" />
                 <span>Export JSON</span>
               </button>
               <button
                 onClick={() => handleExportAudit("csv")}
-                className="flex items-center gap-1 rounded bg-[#18181b] hover:bg-[#222228] text-zinc-300 px-2.5 py-1 text-[11px] font-mono border border-[#27272a] transition-colors cursor-pointer"
+                className="flex items-center gap-1 rounded-md bg-[#18181b] hover:bg-[#222228] text-zinc-300 px-2.5 py-1 text-[11px] font-mono border border-[#27272a] transition-colors cursor-pointer whitespace-nowrap shrink-0"
                 title="Download CSV compliance table"
               >
-                <Download className="h-3 w-3 text-zinc-400" />
+                <Download className="h-3 w-3 text-zinc-400 shrink-0" />
                 <span>Export CSV</span>
               </button>
             </div>
@@ -604,30 +604,30 @@ export const C2ControlPanel: React.FC<C2ControlPanelProps> = ({
               auditLog.entries.map((entry, idx) => (
                 <div
                   key={entry.audit_id}
-                  className="p-2.5 rounded border border-[#222228] bg-[#111114] font-mono text-[11px] space-y-1.5"
+                  className="p-2.5 rounded-md border border-[#222228] bg-[#111114] font-mono text-[11px] space-y-1.5"
                 >
-                  <div className="flex items-center justify-between text-zinc-400">
+                  <div className="flex flex-wrap items-center justify-between text-zinc-400 gap-1.5">
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-zinc-300">Block #{idx}</span>
-                      <span className="rounded bg-[#1a1a20] px-1.5 py-0.5 text-zinc-200 font-sans text-[10px] font-medium border border-[#27272a]">
+                      <span className="font-bold text-zinc-300 whitespace-nowrap">Block #{idx}</span>
+                      <span className="rounded-md bg-[#1a1a20] px-1.5 py-0.5 text-zinc-200 font-sans text-[10px] font-medium border border-[#27272a] whitespace-nowrap shrink-0">
                         {entry.event_type}
                       </span>
                     </div>
-                    <span className="text-[10px] text-zinc-500">
+                    <span className="text-[10px] text-zinc-500 whitespace-nowrap">
                       {new Date(entry.created_at).toLocaleTimeString()} by {entry.actor_id} (
                       {entry.actor_role})
                     </span>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[10px] text-zinc-400 pt-0.5">
-                    <div className="flex items-center justify-between bg-[#09090b] px-2 py-1 rounded border border-[#1f1f26]">
-                      <span className="text-zinc-500">Prev:</span>
-                      <span className="text-zinc-400 font-mono">
+                    <div className="flex items-center justify-between bg-[#09090b] px-2 py-1 rounded-md border border-[#1f1f26]">
+                      <span className="text-zinc-500 whitespace-nowrap">Prev:</span>
+                      <span className="text-zinc-400 font-mono whitespace-nowrap">
                         {entry.prev_entry_hash.substring(0, 16)}...
                       </span>
                       <button
                         onClick={() => handleCopyHash(entry.prev_entry_hash)}
-                        className="text-zinc-500 hover:text-white cursor-pointer ml-1"
+                        className="text-zinc-500 hover:text-white cursor-pointer ml-1 shrink-0"
                         title="Copy Prev Hash"
                       >
                         {copiedHash === entry.prev_entry_hash ? (
@@ -638,14 +638,14 @@ export const C2ControlPanel: React.FC<C2ControlPanelProps> = ({
                       </button>
                     </div>
 
-                    <div className="flex items-center justify-between bg-[#09090b] px-2 py-1 rounded border border-[#1f1f26]">
-                      <span className="text-zinc-500">Hash:</span>
-                      <span className="text-emerald-400/90 font-mono">
+                    <div className="flex items-center justify-between bg-[#09090b] px-2 py-1 rounded-md border border-[#1f1f26]">
+                      <span className="text-zinc-500 whitespace-nowrap">Hash:</span>
+                      <span className="text-emerald-400/90 font-mono whitespace-nowrap">
                         {entry.entry_hash.substring(0, 16)}...
                       </span>
                       <button
                         onClick={() => handleCopyHash(entry.entry_hash)}
-                        className="text-zinc-500 hover:text-white cursor-pointer ml-1"
+                        className="text-zinc-500 hover:text-white cursor-pointer ml-1 shrink-0"
                         title="Copy Block Hash"
                       >
                         {copiedHash === entry.entry_hash ? (

@@ -92,36 +92,34 @@ export const FleetOverview: React.FC<FleetOverviewProps> = ({
   }, [sessions, statusFilter, searchQuery]);
 
   return (
-    <div className="rounded-xl border border-[#222228] bg-[#111114] flex flex-col shadow-sm">
+    <div className="rounded-xl border border-[#222228] bg-[#111114] flex flex-col shadow-sm overflow-hidden">
       {/* Panel Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#222228] bg-[#0d0d10] rounded-t-xl">
+      <div className="flex flex-wrap items-center justify-between px-4 py-3 border-b border-[#222228] bg-[#0d0d10] gap-2">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[#18181b] border border-[#27272a] text-zinc-300">
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#18181b] border border-[#27272a] text-zinc-300">
             <Bot className="h-3.5 w-3.5 text-zinc-400" />
           </div>
           <div className="flex items-center gap-2">
-            <h2 className="text-xs font-semibold text-zinc-100 uppercase tracking-wider">
+            <h2 className="text-xs font-semibold text-zinc-100 uppercase tracking-wider whitespace-nowrap">
               Agent Fleet
             </h2>
-            <span className="rounded-full bg-[#18181b] px-2 py-0.5 text-[10px] font-mono font-medium text-zinc-400 border border-[#27272a]">
+            <span className="rounded-md bg-[#18181b] px-2 py-0.5 text-[10px] font-mono font-medium text-zinc-400 border border-[#27272a] whitespace-nowrap shrink-0">
               {sessions.length}
             </span>
             {runningCount > 0 && (
-              <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-mono">
+              <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-mono whitespace-nowrap shrink-0">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
                 {runningCount} live
               </span>
             )}
           </div>
         </div>
-
-        <span className="text-[11px] font-mono text-zinc-500">Autonomous Fleet Roster</span>
       </div>
 
       {/* Search & Filter Toolbar */}
-      <div className="px-4 py-2.5 border-b border-[#1f1f26] bg-[#0f0f13] flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center justify-between">
+      <div className="px-4 py-2.5 border-b border-[#1f1f26] bg-[#0f0f13] flex flex-col gap-2">
         {/* Search Input */}
-        <div className="relative flex-1">
+        <div className="relative w-full">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500" />
           <input
             type="text"
@@ -141,7 +139,7 @@ export const FleetOverview: React.FC<FleetOverviewProps> = ({
         </div>
 
         {/* Filter Pills */}
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1 shrink-0 overflow-x-auto w-full pb-0.5">
           {(
             [
               { id: "ALL", label: `All (${sessions.length})` },
@@ -155,7 +153,7 @@ export const FleetOverview: React.FC<FleetOverviewProps> = ({
               <button
                 key={tab.id}
                 onClick={() => setStatusFilter(tab.id)}
-                className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer ${
+                className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                   isActive
                     ? "bg-[#222228] text-white border border-zinc-600/80 shadow-2xs"
                     : "text-zinc-500 hover:text-zinc-300 hover:bg-[#141418]"
@@ -234,25 +232,25 @@ export const FleetOverview: React.FC<FleetOverviewProps> = ({
                       <span className="text-xs font-medium text-white truncate">
                         {sess.agent_name}
                       </span>
-                      <span className="rounded bg-[#1a1a20] px-1.5 py-0.5 text-[9px] font-mono font-medium text-zinc-400 border border-[#27272a] uppercase">
+                      <span className="rounded-md bg-[#1a1a20] px-1.5 py-0.5 text-[9px] font-mono font-medium text-zinc-400 border border-[#27272a] uppercase whitespace-nowrap shrink-0">
                         {sess.framework}
                       </span>
                     </div>
-                    <div className="text-[10px] text-zinc-500 font-mono mt-0.5 flex items-center gap-2">
-                      <span>id: {sess.session_id.substring(0, 8)}</span>
+                    <div className="text-[10px] text-zinc-500 font-mono mt-0.5 flex flex-wrap items-center gap-2">
+                      <span className="whitespace-nowrap">id: {sess.session_id.substring(0, 8)}</span>
                       {sess.latest_checkpoint_id && (
                         <>
                           <span className="text-zinc-700">•</span>
-                          <span>cp: {sess.latest_checkpoint_id.substring(0, 8)}</span>
+                          <span className="whitespace-nowrap">cp: {sess.latest_checkpoint_id.substring(0, 8)}</span>
                         </>
                       )}
                     </div>
                   </div>
 
                   <span
-                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-mono font-medium border shrink-0 ${status.pill}`}
+                    className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-mono font-medium border shrink-0 whitespace-nowrap ${status.pill}`}
                   >
-                    <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />
+                    <span className={`h-1.5 w-1.5 rounded-full ${status.dot} shrink-0`} />
                     {status.label}
                   </span>
                 </div>
@@ -261,9 +259,9 @@ export const FleetOverview: React.FC<FleetOverviewProps> = ({
                 <div className="flex items-center justify-between gap-3 pt-2 border-t border-[#1f1f26]">
                   {/* Budget Burn Track */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex justify-between text-[10px] text-zinc-400 mb-1 font-mono">
-                      <span className="text-zinc-300">${sess.accumulated_cost_usd.toFixed(4)}</span>
-                      <span className="text-zinc-500">
+                    <div className="flex justify-between text-[10px] text-zinc-400 mb-1 font-mono gap-1">
+                      <span className="text-zinc-300 whitespace-nowrap">${sess.accumulated_cost_usd.toFixed(4)}</span>
+                      <span className="text-zinc-500 whitespace-nowrap">
                         cap ${sess.budget_cap_usd.toFixed(2)} ({burnPct.toFixed(0)}%)
                       </span>
                     </div>
@@ -276,14 +274,14 @@ export const FleetOverview: React.FC<FleetOverviewProps> = ({
                   </div>
 
                   {/* Contextual Action Buttons */}
-                  <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
                     {isRunning && (
                       <button
                         title="Pause session for inspection / C2 intervention"
                         onClick={() => onPause(sess.session_id)}
-                        className="rounded px-2 py-0.5 border border-[#27272a] bg-[#18181b] hover:bg-[#222228] text-zinc-300 text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1"
+                        className="rounded-md px-2 py-0.5 border border-[#27272a] bg-[#18181b] hover:bg-[#222228] text-zinc-300 text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1 whitespace-nowrap shrink-0"
                       >
-                        <Pause className="h-3 w-3 text-amber-400" />
+                        <Pause className="h-3 w-3 text-amber-400 shrink-0" />
                         <span>Pause</span>
                       </button>
                     )}
@@ -292,9 +290,9 @@ export const FleetOverview: React.FC<FleetOverviewProps> = ({
                       <button
                         title="Unlock C2: Move session to PAUSED_C2 to inspect state, edit memory, or adjust budget"
                         onClick={() => onPause(sess.session_id)}
-                        className="rounded px-2 py-0.5 border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1"
+                        className="rounded-md px-2 py-0.5 border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1 whitespace-nowrap shrink-0"
                       >
-                        <Unlock className="h-3 w-3 text-amber-400" />
+                        <Unlock className="h-3 w-3 text-amber-400 shrink-0" />
                         <span>Unlock C2</span>
                       </button>
                     )}
@@ -303,9 +301,9 @@ export const FleetOverview: React.FC<FleetOverviewProps> = ({
                       <button
                         title="Resume agent execution"
                         onClick={() => onResume(sess.session_id)}
-                        className="rounded px-2 py-0.5 border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1"
+                        className="rounded-md px-2 py-0.5 border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1 whitespace-nowrap shrink-0"
                       >
-                        <Play className="h-3 w-3 text-emerald-400" />
+                        <Play className="h-3 w-3 text-emerald-400 shrink-0" />
                         <span>Resume</span>
                       </button>
                     )}
@@ -314,7 +312,7 @@ export const FleetOverview: React.FC<FleetOverviewProps> = ({
                       <button
                         title="Terminate session immediately"
                         onClick={() => onTerminate(sess.session_id)}
-                        className="rounded p-1 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer border border-transparent hover:border-rose-500/20"
+                        className="rounded-md p-1 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer border border-transparent hover:border-rose-500/20 shrink-0"
                       >
                         <XOctagon className="h-3.5 w-3.5" />
                       </button>

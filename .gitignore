@@ -29,7 +29,6 @@ dashboard/dist/
 
 # Internal Project Documentation
 FEATURES.md
-UI_REDESIGN_SECTIONS.md
 
 # Secrets & Environment Variables
 .env
