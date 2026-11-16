@@ -4,12 +4,36 @@
 :root {
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Design System Surfaces */
+  --argus-canvas: #09090b;
+  --argus-surface: #111114;
+  --argus-surface-subtle: #0d0d10;
+  --argus-surface-hover: #16161b;
+  --argus-surface-elevated: #1a1a20;
+
+  /* Hairline Borders */
+  --argus-border: #222228;
+  --argus-border-subtle: #1a1a20;
+  --argus-border-hover: #2e2e38;
+  --argus-border-active: #3f3f4e;
+
+  /* Typography Colors */
+  --text-primary: #f4f4f5;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+
+  /* Semantic Status */
+  --status-healthy: #10b981;
+  --status-warning: #f59e0b;
+  --status-error: #f43f5e;
+  --status-info: #3b82f6;
 }
 
 @layer base {
   body {
-    background-color: #09090b;
-    color: #f4f4f5;
+    background-color: var(--argus-canvas);
+    color: var(--text-primary);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -18,6 +42,89 @@
   code, pre, .font-mono {
     font-family: var(--font-mono);
   }
+}
+
+/* Utilitarian Component Primitives */
+.argus-card {
+  background-color: var(--argus-surface);
+  border: 1px solid var(--argus-border);
+  border-radius: 0.5rem;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.argus-card:hover {
+  border-color: var(--argus-border-hover);
+}
+
+.argus-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--argus-border);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  background-color: var(--argus-surface-subtle);
+  border-top-left-radius: 0.5rem;
+  border-top-right-radius: 0.5rem;
+}
+
+.argus-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: 0.375rem;
+  transition: all 0.15s ease;
+  cursor: pointer;
+  user-select: none;
+}
+
+.argus-btn-primary {
+  background-color: #fafafa;
+  color: #09090b;
+  border: 1px solid #ffffff;
+}
+
+.argus-btn-primary:hover:not(:disabled) {
+  background-color: #e4e4e7;
+}
+
+.argus-btn-secondary {
+  background-color: #18181b;
+  color: #f4f4f5;
+  border: 1px solid var(--argus-border);
+}
+
+.argus-btn-secondary:hover:not(:disabled) {
+  background-color: #27272a;
+  border-color: var(--argus-border-hover);
+}
+
+.argus-btn-danger {
+  background-color: rgba(244, 63, 94, 0.1);
+  color: #fb7185;
+  border: 1px solid rgba(244, 63, 94, 0.25);
+}
+
+.argus-btn-danger:hover:not(:disabled) {
+  background-color: rgba(244, 63, 94, 0.2);
+  border-color: rgba(244, 63, 94, 0.4);
+}
+
+.argus-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  border-radius: 9999px;
+  border: 1px solid transparent;
 }
 
 /* Modern minimal scrollbars */
@@ -39,7 +146,7 @@
 /* Clean, modern React Flow canvas overrides */
 .react-flow__renderer,
 .react-flow__pane {
-  background: #09090b !important;
+  background: var(--argus-canvas) !important;
 }
 
 .react-flow__node {
@@ -60,7 +167,7 @@
 
 .react-flow__controls {
   background: #18181b !important;
-  border: 1px solid #27272a !important;
+  border: 1px solid var(--argus-border) !important;
   border-radius: 8px !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
   overflow: hidden;
@@ -68,7 +175,7 @@
 
 .react-flow__controls-button {
   background: #18181b !important;
-  border-bottom: 1px solid #27272a !important;
+  border-bottom: 1px solid var(--argus-border) !important;
   color: #a1a1aa !important;
   fill: #a1a1aa !important;
   width: 28px !important;

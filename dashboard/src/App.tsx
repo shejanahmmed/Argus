@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { X } from "lucide-react";
 import { Header } from "./components/Header";
 import { FleetOverview } from "./components/FleetOverview";
 import { LangGraphVisualizer } from "./components/LangGraphVisualizer";
@@ -43,6 +44,16 @@ export const App: React.FC = () => {
   const [storageBackend, setStorageBackend] = useState<string>("sqlite");
   const [storageDiagnostics, setStorageDiagnostics] = useState<StorageDiagnostics | null>(null);
   const [systemReady, setSystemReady] = useState<boolean>(true);
+
+  // Auto-dismiss status notification toast
+  useEffect(() => {
+    if (statusMessage) {
+      const timer = setTimeout(() => {
+        setStatusMessage(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [statusMessage]);
 
   // Multi-tenant Security Context & Bearer Auth
   const [tenantId, setTenantId] = useState<string>(
@@ -629,54 +640,135 @@ export const App: React.FC = () => {
         onFlushWalCheckpoint={handleFlushWalCheckpoint}
       />
 
-      <main className="flex-1 p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-[1920px] w-full mx-auto">
-        {/* Left Column: Fleet List & Container Logs */}
-        <div className="lg:col-span-4 flex flex-col gap-6">
-          <FleetOverview
-            sessions={sessions}
-            selectedSessionId={selectedSessionId}
-            onSelectSession={(id) => setSelectedSessionId(id)}
-            onPause={handlePause}
-            onResume={handleResume}
-            onTerminate={handleTerminate}
-            onSeedScenario={handleSeedScenario}
-          />
-          {(activeView === "ALL" || activeView === "TOPOLOGY") && (
-            <LogWaterfall logs={logs} />
-          )}
-        </div>
+      <main className="flex-1 p-6 max-w-[1920px] w-full mx-auto">
+        {/* VIEW: ALL (Executive Operations Overview) */}
+        {activeView === "ALL" && (
+          <div className="flex flex-col gap-6 w-full">
+            {/* Top Deck: Fleet Active Roster & Live Logs side-by-side */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full">
+              <div className="lg:col-span-5 flex flex-col">
+                <FleetOverview
+                  sessions={sessions}
+                  selectedSessionId={selectedSessionId}
+                  onSelectSession={(id) => setSelectedSessionId(id)}
+                  onPause={handlePause}
+                  onResume={handleResume}
+                  onTerminate={handleTerminate}
+                  onSeedScenario={handleSeedScenario}
+                />
+              </div>
+              <div className="lg:col-span-7 flex flex-col">
+                <LogWaterfall logs={logs} />
+              </div>
+            </div>
 
-        {/* Right Column: Dynamic Workspace Views */}
-        <div className="lg:col-span-8 flex flex-col gap-6">
-          {(activeView === "ALL" || activeView === "TOPOLOGY") && (
-            <LangGraphVisualizer
-              spans={spans}
-              selectedSpan={selectedSpan}
-              onSelectSpan={(span) => setSelectedSpan(span)}
-              authFetch={authFetch}
-            />
-          )}
+            {/* Mid Deck: Execution DAG & Command & Control Lab */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full">
+              <div className="lg:col-span-7 flex flex-col">
+                <LangGraphVisualizer
+                  spans={spans}
+                  selectedSpan={selectedSpan}
+                  onSelectSpan={(span) => setSelectedSpan(span)}
+                  authFetch={authFetch}
+                />
+              </div>
+              <div className="lg:col-span-5 flex flex-col">
+                <C2ControlPanel
+                  sessionId={selectedSessionId}
+                  sessionStatus={selectedSession?.status}
+                  pendingTools={pendingTools}
+                  latestCheckpoint={latestCheckpoint}
+                  auditLog={auditLog}
+                  statusMessage={statusMessage}
+                  activeLease={activeLease}
+                  onApproveTool={handleApproveTool}
+                  onEditTool={handleEditTool}
+                  onMockTool={handleMockTool}
+                  onRejectTool={handleRejectTool}
+                  onApplyPatch={handleApplyPatch}
+                  onReapLeases={handleReapLeases}
+                  authFetch={authFetch}
+                />
+              </div>
+            </div>
 
-          {(activeView === "ALL" || activeView === "C2_LAB") && (
-            <C2ControlPanel
-              sessionId={selectedSessionId}
-              sessionStatus={selectedSession?.status}
-              pendingTools={pendingTools}
-              latestCheckpoint={latestCheckpoint}
-              auditLog={auditLog}
-              statusMessage={statusMessage}
-              activeLease={activeLease}
-              onApproveTool={handleApproveTool}
-              onEditTool={handleEditTool}
-              onMockTool={handleMockTool}
-              onRejectTool={handleRejectTool}
-              onApplyPatch={handleApplyPatch}
-              onReapLeases={handleReapLeases}
-              authFetch={authFetch}
-            />
-          )}
+            {/* Bottom Deck: FinOps & Pareto Intelligence */}
+            <div className="w-full">
+              <RoiAndBenchmarks
+                roi={roi}
+                benchmarks={benchmarks}
+                recommendations={recommendations}
+                businessValueUsd={businessValueUsd}
+                onChangeBusinessValue={(val) => setBusinessValueUsd(val)}
+              />
+            </div>
+          </div>
+        )}
 
-          {(activeView === "ALL" || activeView === "FINOPS") && (
+        {/* VIEW: TOPOLOGY (Full Canvas Execution Graph & Spans) */}
+        {activeView === "TOPOLOGY" && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full">
+            <div className="lg:col-span-3 flex flex-col gap-6">
+              <FleetOverview
+                sessions={sessions}
+                selectedSessionId={selectedSessionId}
+                onSelectSession={(id) => setSelectedSessionId(id)}
+                onPause={handlePause}
+                onResume={handleResume}
+                onTerminate={handleTerminate}
+                onSeedScenario={handleSeedScenario}
+              />
+              <LogWaterfall logs={logs} />
+            </div>
+            <div className="lg:col-span-9 flex flex-col">
+              <LangGraphVisualizer
+                spans={spans}
+                selectedSpan={selectedSpan}
+                onSelectSpan={(span) => setSelectedSpan(span)}
+                authFetch={authFetch}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* VIEW: C2_LAB (Command & Control Interventions & Ledger) */}
+        {activeView === "C2_LAB" && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full">
+            <div className="lg:col-span-4 flex flex-col">
+              <FleetOverview
+                sessions={sessions}
+                selectedSessionId={selectedSessionId}
+                onSelectSession={(id) => setSelectedSessionId(id)}
+                onPause={handlePause}
+                onResume={handleResume}
+                onTerminate={handleTerminate}
+                onSeedScenario={handleSeedScenario}
+              />
+            </div>
+            <div className="lg:col-span-8 flex flex-col">
+              <C2ControlPanel
+                sessionId={selectedSessionId}
+                sessionStatus={selectedSession?.status}
+                pendingTools={pendingTools}
+                latestCheckpoint={latestCheckpoint}
+                auditLog={auditLog}
+                statusMessage={statusMessage}
+                activeLease={activeLease}
+                onApproveTool={handleApproveTool}
+                onEditTool={handleEditTool}
+                onMockTool={handleMockTool}
+                onRejectTool={handleRejectTool}
+                onApplyPatch={handleApplyPatch}
+                onReapLeases={handleReapLeases}
+                authFetch={authFetch}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* VIEW: FINOPS (Executive ROI & Pareto Benchmark Intelligence) */}
+        {activeView === "FINOPS" && (
+          <div className="max-w-7xl mx-auto w-full flex flex-col">
             <RoiAndBenchmarks
               roi={roi}
               benchmarks={benchmarks}
@@ -684,14 +776,37 @@ export const App: React.FC = () => {
               businessValueUsd={businessValueUsd}
               onChangeBusinessValue={(val) => setBusinessValueUsd(val)}
             />
-          )}
-        </div>
+          </div>
+        )}
       </main>
 
-      <footer className="border-t border-zinc-800 bg-[#09090b] px-6 py-4 flex flex-wrap justify-between items-center gap-3 text-xs text-zinc-500">
-        <div>Argus AgentOps & C2 Control Plane • $0 Open-Source Infrastructure</div>
-        <div className="flex items-center gap-4">
-          <span>OpenTelemetry GenAI</span>
+      {/* Floating Status Notification Toast */}
+      {statusMessage && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-lg border border-[#2e2e38] bg-[#141418]/95 px-4 py-3 text-xs text-zinc-100 shadow-2xl backdrop-blur-md transition-all">
+          <span className="h-2 w-2 rounded-full bg-emerald-400 shrink-0" />
+          <span className="font-mono text-[11px] max-w-md leading-relaxed">{statusMessage}</span>
+          <button
+            onClick={() => setStatusMessage(null)}
+            className="text-zinc-500 hover:text-zinc-200 p-0.5 rounded cursor-pointer transition-colors"
+            title="Dismiss notification"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Utilitarian Footer */}
+      <footer className="border-t border-[#222228] bg-[#09090b] px-6 py-3 flex flex-wrap justify-between items-center gap-4 text-[11px] text-zinc-500 font-mono">
+        <div className="flex items-center gap-2">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+          <span className="text-zinc-400 font-sans font-medium">Argus AgentOps C2</span>
+          <span className="text-zinc-600">•</span>
+          <span>v0.1.0-alpha</span>
+          <span className="text-zinc-600">•</span>
+          <span>$0 Open-Source Core</span>
+        </div>
+        <div className="flex items-center gap-4 text-zinc-500">
+          <span>OTel GenAI</span>
           <span>•</span>
           <span>Arize Phoenix</span>
           <span>•</span>
