@@ -4,8 +4,31 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Argus — Autonomous Agent Governance & C2 Control Plane</title>
-    <link rel="icon" type="image/svg+xml" href="/argus_logo.svg" />
-    <link rel="alternate icon" type="image/png" href="/argus_logo.png" />
+    <!-- Adaptive Favicon: White in Dark Mode, Black in Light Mode (Auto-Switch) -->
+    <link id="argus-favicon-svg" rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link id="argus-favicon-png" rel="alternate icon" type="image/png" href="/argus_logo.png" />
+    <script>
+      (function() {
+        var matcher = window.matchMedia('(prefers-color-scheme: dark)');
+        function updateFavicon() {
+          var isDark = matcher.matches;
+          var svgLink = document.getElementById('argus-favicon-svg');
+          var pngLink = document.getElementById('argus-favicon-png');
+          if (svgLink) {
+            svgLink.href = isDark ? '/argus_logo_white.svg' : '/favicon.svg';
+          }
+          if (pngLink) {
+            pngLink.href = isDark ? '/argus_logo_white.png' : '/argus_logo.png';
+          }
+        }
+        updateFavicon();
+        if (matcher.addEventListener) {
+          matcher.addEventListener('change', updateFavicon);
+        } else if (matcher.addListener) {
+          matcher.addListener(updateFavicon);
+        }
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">

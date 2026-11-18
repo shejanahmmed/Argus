@@ -134,16 +134,15 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Top Command Bar */}
       <div className="max-w-[1920px] mx-auto px-6 py-2.5 flex flex-wrap items-center justify-between gap-4">
         {/* Left: Brand & Tenant Context */}
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[#141418] border border-[#27272a] text-zinc-100 shadow-sm shrink-0">
-            <ArgusLogo className="h-4 w-4 text-emerald-400" />
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold tracking-tight text-white font-sans whitespace-nowrap">Argus</span>
+        <div className="flex items-center gap-2.5 shrink-0">
+          <div className="flex items-center gap-1.5">
+            <ArgusLogo className="h-5 w-5 text-emerald-400 shrink-0" />
+            <span className="text-sm font-bold tracking-tight text-white font-sans whitespace-nowrap">Argus</span>
             <span className="rounded-md bg-zinc-800/80 px-1.5 py-0.5 text-[10px] font-mono font-medium text-zinc-400 border border-zinc-700/50 whitespace-nowrap shrink-0">
               C2
             </span>
-            <span className="text-zinc-700 text-xs">|</span>
+          </div>
+          <span className="text-zinc-700 text-xs">|</span>
             <button
               onClick={handleOpenAuth}
               title="Configure Tenant ID, Workspace ID, Operator ID, and Token"
@@ -159,7 +158,6 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </button>
           </div>
-        </div>
 
         {/* Center: Segmented View Navigation */}
         <nav className="flex items-center gap-0.5 rounded-lg bg-[#0d0d10] p-1 border border-[#222228] shrink-0">

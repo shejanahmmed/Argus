@@ -166,6 +166,7 @@ def create_app() -> FastAPI:
             "argus_logo.svg",
             "argus_logo.png",
             "argus_logo_white.svg",
+            "argus_logo_white.png",
             "argus_logo_navy.svg",
             "argus_logo_emerald.png",
         ):
