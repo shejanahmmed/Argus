@@ -15,6 +15,18 @@ export default defineConfig({
         target: "ws://localhost:8000",
         ws: true,
       },
+      "/readyz": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+      },
+      "/healthz": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+      },
+      "/metrics": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+      },
     },
   },
 });

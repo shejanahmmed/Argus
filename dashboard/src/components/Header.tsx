@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
 import {
-  Shield,
   Play,
   RotateCcw,
   ShieldAlert,
@@ -16,6 +15,7 @@ import {
   FlaskConical,
   ChevronDown,
 } from "lucide-react";
+import { ArgusLogo } from "./ArgusLogo";
 import { AgentSession, ViewMode, StorageDiagnostics } from "../types";
 
 interface HeaderProps {
@@ -134,7 +134,7 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Left: Brand & Tenant Context */}
         <div className="flex items-center gap-3 shrink-0">
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[#141418] border border-[#27272a] text-zinc-100 shadow-sm shrink-0">
-            <Shield className="h-3.5 w-3.5 text-emerald-400" />
+            <ArgusLogo className="h-4 w-4 text-emerald-400" />
           </div>
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold tracking-tight text-white font-sans whitespace-nowrap">Argus</span>

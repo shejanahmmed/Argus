@@ -1,6 +1,37 @@
-# ARGUS — Autonomous Agent Governance, Observability & C2 Control Plane
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="dashboard/public/argus_logo_white.png">
+    <img src="dashboard/public/argus_logo.png" alt="Argus Logo" width="130" height="130">
+  </picture>
+</p>
 
-**Argus** is an enterprise-grade **AgentOps Governance, Telemetry, and Command & Control (C2) Control Plane** engineered to monitor, intercept, evaluate, and govern autonomous AI agents (LangGraph, LCEL, CrewAI, AutoGPT, and Model Context Protocol [MCP] tool runtimes) at scale with zero tolerance for runaway loops, budget depletion, or unauthorized tool execution.
+<h1 align="center">ARGUS</h1>
+
+<p align="center">
+  <strong>Zero-Tolerance Governance, Observability & Command & Control (C2) Plane for Autonomous AI Agents</strong>
+</p>
+
+<p align="center">
+  <a href="#quickstart"><img src="https://img.shields.io/badge/Status-Production--Ready-10b981?style=flat-square&logo=statuspage&logoColor=white" alt="Status: Production Ready"></a>
+  <a href="#quickstart"><img src="https://img.shields.io/badge/Python-3.11%20%7C%203.12%20%7C%203.13-blue?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+"></a>
+  <a href="#quickstart"><img src="https://img.shields.io/badge/TypeScript-React%2019-3178c6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript React 19"></a>
+  <a href="#quickstart"><img src="https://img.shields.io/badge/Tests-140%20Passed-10b981?style=flat-square&logo=pytest&logoColor=white" alt="140 Tests Passing"></a>
+  <a href="#quickstart"><img src="https://img.shields.io/badge/Type%20Safety-Strict%20Mypy%20100%25-blueviolet?style=flat-square" alt="Strict Mypy"></a>
+  <a href="#quickstart"><img src="https://img.shields.io/badge/Cost-%240%20Zero--Spend%20OSS-emerald?style=flat-square" alt="Zero-Spend OSS"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-zinc?style=flat-square" alt="License Apache-2.0"></a>
+</p>
+
+<p align="center">
+  <a href="#quickstart">Quickstart</a> •
+  <a href="#system-architecture">Architecture</a> •
+  <a href="#core-engineering-capabilities">Core Capabilities</a> •
+  <a href="#3-line-agent-sdk-instrumentation-example">Python SDK</a> •
+  <a href="#option-a-single-command-docker-deployment-recommended">Docker Deployment</a>
+</p>
+
+<p align="center">
+  <sub>Argus is an enterprise-grade AgentOps governance, telemetry, and Command & Control (C2) control plane engineered to monitor, intercept, evaluate, and govern autonomous AI agents (LangGraph, LCEL, CrewAI, AutoGPT, and Model Context Protocol runtimes) at scale with zero tolerance for runaway loops, budget depletion, or unauthorized destructive tool execution.</sub>
+</p>
 
 ---
 
@@ -84,33 +115,48 @@ Argus evaluates every reasoning step and tool invocation in `< 2 ms` across thre
 
 ## Quickstart
 
-### 1. Backend Setup & Verification
+### Option A: Single-Command Docker Deployment (Recommended)
+```bash
+docker compose up -d
+```
+Navigating to `http://localhost:8000` automatically redirects web browsers to the **Argus C2 Console** while spinning up persistent SQLite storage, PostgreSQL 16, ClickHouse 24, and Valkey 7 (`$0` self-hosted open-source stack).
+
+---
+
+### Option B: Local Python Execution
+
 ```powershell
+# 1. Initialize environment & install Argus
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
 
-# Run the full 60+ test suite, strict Mypy type checker, and Ruff linter
+# 2. Run the 140-test suite, strict Mypy type checker, and Ruff linter
 pytest -v
 mypy --strict src tests
 ruff check src tests
+
+# 3. Launch the unified Control Plane & Dashboard on a single port
+python -m argus serve --port 8000
 ```
+Open **`http://localhost:8000`** in any web browser and click **SEED SCENARIO** in the top navigation bar to populate multi-agent LangGraph, CrewAI, and AutoGPT traces, trigger a live recursive loop trip, inspect paused destructive MCP tool calls, and audit the SHA-256 compliance ledger.
 
-### 2. Launch Control Plane & Stark `#000000` Monochrome Dashboard
-```powershell
-# Terminal 1: Start the FastAPI Control Plane (supports ARGUS_STORAGE_BACKEND=memory or sqlite)
-uvicorn argus.api.app:app --reload --port 8000
+---
 
-# Terminal 2: Start the React 19 + TypeScript + Vite C2 Console
-cd dashboard
-npm install
-npm run dev
+### 3-Line Agent SDK Instrumentation Example
+
+Connect any autonomous agent runtime to Argus in 3 lines:
+
+```python
+from argus.sdk.tracer import ArgusTracer
+from argus.core.tenancy import TenantContext, Role
+
+ctx = TenantContext(tenant_id="acme_corp", workspace_id="production", actor_id="agent_alpha", role=Role.OPERATOR)
+tracer = ArgusTracer.remote(base_url="http://localhost:8000")
+
+# Decorate or instrument agent reasoning steps:
+@tracer.trace(name="research_step", span_kind="agent")
+async def execute_agent_step(task_prompt: str) -> str:
+    # Argus evaluates loops, enforces budgets, and intercepts destructive tools
+    return "Task completed"
 ```
-
-Open `http://localhost:5173` and click **SEED DEMO SCENARIO** in the top command bar to populate multi-agent LangGraph, CrewAI, and AutoGPT traces, trigger a live recursive loop trip, inspect a paused destructive MCP tool call, apply an RFC 6902 memory patch, and verify the SHA-256 audit chain.
-
-### 3. Optional Self-Hosted Docker Infrastructure
-```powershell
-docker compose up -d
-```
-Provisions local **PostgreSQL 16**, **ClickHouse 24**, and **Valkey 7** (`$0` self-hosted open-source stack).

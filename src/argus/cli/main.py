@@ -93,6 +93,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--token", default=None, help="Optional Argus HMAC Bearer token"
     )
 
+    # 'serve' command
+    serve_parser = subparsers.add_parser("serve", help="Start the Argus C2 Control Plane server")
+    serve_parser.add_argument(
+        "--host", default="0.0.0.0", help="Bind host address (default: 0.0.0.0)"
+    )
+    serve_parser.add_argument(
+        "--port", "-p", type=int, default=8000, help="Bind port number (default: 8000)"
+    )
+    serve_parser.add_argument(
+        "--reload", action="store_true", help="Enable auto-reload on file changes (development)"
+    )
+    serve_parser.add_argument(
+        "--workers", "-w", type=int, default=1, help="Number of worker processes (default: 1)"
+    )
+
     # 'version' command
     subparsers.add_parser("version", help="Print Argus version information")
 
@@ -153,10 +168,30 @@ def handle_flush_spool(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_serve(args: argparse.Namespace) -> int:
+    """Start the Uvicorn ASGI server for the Argus Control Plane application."""
+    import uvicorn
+
+    sys.stdout.write(f"\n[Argus] Launching Control Plane on http://{args.host}:{args.port}\n")
+    sys.stdout.write(f"[Argus] Dashboard: http://localhost:{args.port}/dashboard\n")
+    sys.stdout.write(f"[Argus] API Docs:  http://localhost:{args.port}/docs\n\n")
+    uvicorn.run(
+        "argus.api.app:app",
+        host=args.host,
+        port=args.port,
+        reload=args.reload,
+        workers=args.workers if not args.reload else 1,
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI execution entrypoint."""
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.subcommand == "serve":
+        return handle_serve(args)
 
     if args.subcommand == "auth":
         if args.auth_action == "issue-token":

@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Coroutine
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from starlette.staticfiles import StaticFiles
 
 from argus.api.dependencies import get_container
@@ -136,6 +137,35 @@ def create_app() -> FastAPI:
             name="dashboard",
         )
 
+        # Route common root assets (favicons, logos) directly from dashboard_dist
+        for asset_filename in (
+            "favicon.ico",
+            "favicon.svg",
+            "favicon.png",
+            "argus_logo.svg",
+            "argus_logo.png",
+            "argus_logo_white.svg",
+            "argus_logo_navy.svg",
+            "argus_logo_emerald.png",
+        ):
+            asset_path = dashboard_dist / asset_filename
+            if asset_path.exists():
+
+                def _make_asset_endpoint(
+                    target_path: Path,
+                ) -> Callable[[], Coroutine[Any, Any, FileResponse]]:
+                    async def _serve_asset() -> FileResponse:
+                        return FileResponse(target_path)
+
+                    return _serve_asset
+
+                app.add_api_route(
+                    f"/{asset_filename}",
+                    _make_asset_endpoint(asset_path),
+                    methods=["GET"],
+                    include_in_schema=False,
+                )
+
     @app.get("/healthz", tags=["System"])
     async def health_check() -> dict[str, str]:
         """Liveness probe endpoint for container orchestrators."""
@@ -230,8 +260,15 @@ def create_app() -> FastAPI:
         }
 
     @app.get("/", tags=["System"])
-    async def root_index() -> dict[str, str]:
-        """Root API summary."""
+    async def root_index(request: Request) -> Any:
+        """Root API summary or automatic browser redirect to dashboard."""
+        accept = request.headers.get("accept", "")
+        dashboard_dist = Path(__file__).resolve().parents[3] / "dashboard" / "dist"
+        if "text/html" in accept and dashboard_dist.exists():
+            return RedirectResponse(
+                url="/dashboard", status_code=status.HTTP_307_TEMPORARY_REDIRECT
+            )
+
         return {
             "name": "Argus C2 Control Plane API",
             "docs_url": "/docs",

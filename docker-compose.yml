@@ -44,3 +44,28 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+  argus:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: argus-control-plane
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - ARGUS_ENV=development
+      - ARGUS_STORAGE_BACKEND=sqlite
+      - ARGUS_DB_PATH=/app/.argus_logs/argus.db
+      - ARGUS_AUTH_SECRET=argus-local-dev-hmac-secret-key-2026
+      - ARGUS_ALLOW_ANONYMOUS=true
+    volumes:
+      - argus_data:/app/.argus_logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+
+volumes:
+  argus_data:
