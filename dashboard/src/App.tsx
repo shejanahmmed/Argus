@@ -8,6 +8,8 @@ import { RoiAndBenchmarks } from "./components/RoiAndBenchmarks";
 import { LogWaterfall } from "./components/LogWaterfall";
 import { Footer } from "./components/Footer";
 import { HowToUseGuide } from "./components/HowToUseGuide";
+import { BootSplashScreen } from "./components/BootSplashScreen";
+import { LiveDocsModule } from "./components/LiveDocsModule";
 import {
   AgentSession,
   ArgusSpan,
@@ -28,7 +30,12 @@ import {
 export const App: React.FC = () => {
   const [wsConnected, setWsConnected] = useState<boolean>(false);
   const [seeding, setSeeding] = useState<boolean>(false);
-  const [activeView, setActiveView] = useState<ViewMode>("ALL");
+  const [activeView, setActiveView] = useState<ViewMode>(() => {
+    if (typeof window !== "undefined" && window.location.pathname.startsWith("/docs")) {
+      return "DOCS";
+    }
+    return "ALL";
+  });
   const [businessValueUsd, setBusinessValueUsd] = useState<number>(100);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [sessions, setSessions] = useState<AgentSession[]>([]);
@@ -46,6 +53,14 @@ export const App: React.FC = () => {
   const [storageBackend, setStorageBackend] = useState<string>("sqlite");
   const [storageDiagnostics, setStorageDiagnostics] = useState<StorageDiagnostics | null>(null);
   const [systemReady, setSystemReady] = useState<boolean>(true);
+  const [showBootSplash, setShowBootSplash] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return !sessionStorage.getItem("argus_boot_shown");
+  });
+
+  const handleDismissBootSplash = useCallback(() => {
+    setShowBootSplash(false);
+  }, []);
 
   // Auto-dismiss status notification toast
   useEffect(() => {
@@ -645,6 +660,9 @@ export const App: React.FC = () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-[#09090b] text-[#f4f4f5]">
+      {showBootSplash && (
+        <BootSplashScreen onComplete={handleDismissBootSplash} />
+      )}
       <Header
         wsConnected={wsConnected}
         sessions={sessions}
@@ -813,6 +831,23 @@ export const App: React.FC = () => {
             onSelectView={(view) => setActiveView(view)}
             seeding={seeding}
             hasSessions={sessions.length > 0}
+          />
+        )}
+
+        {/* VIEW: DOCS (Live Pitch Deck, Technical Architecture & Live Telemetry) */}
+        {activeView === "DOCS" && (
+          <LiveDocsModule
+            sessions={sessions}
+            wsConnected={wsConnected}
+            storageBackend={storageBackend}
+            storageDiagnostics={storageDiagnostics}
+            systemReady={systemReady}
+            tenantId={tenantId}
+            workspaceId={workspaceId}
+            actorId={actorId}
+            authToken={authToken}
+            onClose={() => setActiveView("ALL")}
+            onFlushWalCheckpoint={handleFlushWalCheckpoint}
           />
         )}
       </main>

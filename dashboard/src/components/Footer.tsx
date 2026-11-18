@@ -3,12 +3,12 @@ import {
   Database,
   ShieldCheck,
   Activity,
-  FileText,
   Download,
   CheckCircle2,
   Lock,
   Cpu,
   BookOpen,
+  Sparkles,
 } from "lucide-react";
 import { ArgusLogo } from "./ArgusLogo";
 import { AgentSession, StorageDiagnostics, ViewMode } from "../types";
@@ -220,16 +220,27 @@ export const Footer: React.FC<FooterProps> = ({
                 Guide
               </button>
             )}
-            <a
-              href="/docs"
-              target="_blank"
-              rel="noreferrer"
-              className="px-2 py-0.5 rounded text-[10px] text-zinc-400 hover:text-zinc-100 hover:bg-[#1a1a20] transition-colors flex items-center gap-1"
-              title="Interactive OpenAPI / Swagger Documentation"
-            >
-              <FileText className="h-2.5 w-2.5 text-zinc-500" />
-              Docs
-            </a>
+            {onSelectView ? (
+              <button
+                onClick={() => onSelectView("DOCS")}
+                className="px-2 py-0.5 rounded text-[10px] text-zinc-300 hover:text-white hover:bg-[#1a1a20] transition-colors flex items-center gap-1 cursor-pointer"
+                title="Open Live /docs Pitch Deck, Tech Whitepaper & Telemetry"
+              >
+                <Sparkles className="h-2.5 w-2.5 text-emerald-400" />
+                /docs
+              </button>
+            ) : (
+              <a
+                href="/docs"
+                target="_blank"
+                rel="noreferrer"
+                className="px-2 py-0.5 rounded text-[10px] text-zinc-400 hover:text-zinc-100 hover:bg-[#1a1a20] transition-colors flex items-center gap-1"
+                title="Live /docs Module & API Reference"
+              >
+                <Sparkles className="h-2.5 w-2.5 text-emerald-400" />
+                /docs
+              </a>
+            )}
             <a
               href="/metrics"
               target="_blank"

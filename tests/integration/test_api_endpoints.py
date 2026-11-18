@@ -53,6 +53,37 @@ async def test_health_and_root_endpoints() -> None:
         res_root = await client.get("/")
         assert res_root.status_code == 200
         assert "docs_url" in res_root.json()
+        assert "swagger_url" in res_root.json()
+
+        res_docs = await client.get("/docs")
+        assert res_docs.status_code == 200
+
+        res_swagger = await client.get("/api/docs")
+        assert res_swagger.status_code == 200
+
+        res_docs_config = await client.get("/api/v1/docs/config")
+        assert res_docs_config.status_code == 200
+        assert res_docs_config.json()["visibility_mode"] == "PUBLIC"
+        assert len(res_docs_config.json()["team"]) >= 1
+
+        # Test updating docs publishing configuration
+        res_update = await client.post(
+            "/api/v1/docs/config",
+            json={
+                "is_public": True,
+                "visibility_mode": "SCHEDULED",
+                "scheduled_start": "2026-11-18T00:00:00Z",
+                "scheduled_end": "2026-12-01T00:00:00Z",
+            },
+            headers={
+                "X-Tenant-ID": "test_tenant",
+                "X-Workspace-ID": "test_workspace",
+                "X-Actor-ID": "admin_user",
+                "X-Role": "ADMIN",
+            },
+        )
+        assert res_update.status_code == 200
+        assert res_update.json()["visibility_mode"] == "SCHEDULED"
 
         res_ready = await client.get("/readyz")
         assert res_ready.status_code == 200

@@ -8,7 +8,29 @@ export type SessionStatus =
 
 export type AgentFramework = "langgraph" | "lcel" | "crewai" | "autogpt" | "mcp" | "custom";
 
-export type ViewMode = "ALL" | "TOPOLOGY" | "C2_LAB" | "FINOPS" | "GUIDE";
+export type ViewMode = "ALL" | "TOPOLOGY" | "C2_LAB" | "FINOPS" | "GUIDE" | "DOCS";
+
+export interface TeamMemberInfo {
+  name: string;
+  role: string;
+  email?: string;
+  avatar_url?: string;
+  github?: string;
+  linkedin?: string;
+  bio?: string;
+}
+
+export interface DocsConfigResponse {
+  is_public: boolean;
+  visibility_mode: "PUBLIC" | "RESTRICTED" | "SCHEDULED";
+  scheduled_start: string | null;
+  scheduled_end: string | null;
+  last_updated_at: string;
+  updated_by: string;
+  project_name: string;
+  tagline: string;
+  team: TeamMemberInfo[];
+}
 
 export interface AgentSession {
   session_id: string;

@@ -15,6 +15,7 @@ import {
   FlaskConical,
   ChevronDown,
   BookOpen,
+  Sparkles,
 } from "lucide-react";
 import { ArgusLogo } from "./ArgusLogo";
 import { AgentSession, ViewMode, StorageDiagnostics } from "../types";
@@ -127,6 +128,7 @@ export const Header: React.FC<HeaderProps> = ({
     { id: "C2_LAB", label: "C2 Governance", icon: <SlidersHorizontal className="h-3.5 w-3.5" /> },
     { id: "FINOPS", label: "FinOps & ROI", icon: <CircleDollarSign className="h-3.5 w-3.5" /> },
     { id: "GUIDE", label: "How to Use", icon: <BookOpen className="h-3.5 w-3.5" /> },
+    { id: "DOCS", label: "/docs Deck", icon: <Sparkles className="h-3.5 w-3.5 text-emerald-400" /> },
   ];
 
   return (

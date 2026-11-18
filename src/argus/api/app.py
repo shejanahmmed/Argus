@@ -18,6 +18,7 @@ from argus.api.routes.attribution import router as attribution_router
 from argus.api.routes.auth import router as auth_router
 from argus.api.routes.c2 import router as c2_router
 from argus.api.routes.demo import router as demo_router
+from argus.api.routes.docs import router as docs_router
 from argus.api.routes.governance import router as governance_router
 from argus.api.routes.stream import router as stream_router
 from argus.api.routes.telemetry import router as telemetry_router
@@ -42,6 +43,8 @@ def create_app() -> FastAPI:
             "for autonomous AI agents."
         ),
         version="0.1.0",
+        docs_url="/api/docs",
+        openapi_url="/openapi.json",
     )
 
     # 1. Automatic GZip compression for responses > 1000 bytes
@@ -141,6 +144,7 @@ def create_app() -> FastAPI:
     app.include_router(attribution_router)
     app.include_router(demo_router)
     app.include_router(stream_router)
+    app.include_router(docs_router)
 
     # Mount compiled dashboard UI if available
     dashboard_dist = Path(__file__).resolve().parents[3] / "dashboard" / "dist"
@@ -157,6 +161,20 @@ def create_app() -> FastAPI:
             StaticFiles(directory=str(dashboard_dist), html=True),
             name="dashboard",
         )
+
+        # Serve Live /docs endpoint via the compiled Single Page Application
+        index_html_path = dashboard_dist / "index.html"
+        if index_html_path.exists():
+
+            @app.get(
+                "/docs",
+                response_class=FileResponse,
+                tags=["Documentation"],
+                include_in_schema=False,
+            )
+            async def serve_live_docs_html() -> FileResponse:
+                """Serve the Live /docs Module (YC Pitch Deck, Architecture, and Live Telemetry)."""
+                return FileResponse(index_html_path)
 
         # Route common root assets (favicons, logos) directly from dashboard_dist
         for asset_filename in (
@@ -294,6 +312,7 @@ def create_app() -> FastAPI:
         return {
             "name": "Argus C2 Control Plane API",
             "docs_url": "/docs",
+            "swagger_url": "/api/docs",
             "openapi_url": "/openapi.json",
             "dashboard_url": "/dashboard",
         }

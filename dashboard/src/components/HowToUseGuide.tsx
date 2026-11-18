@@ -11,6 +11,7 @@ import {
   ArrowRight,
   ExternalLink,
   BookOpen,
+  Sparkles,
 } from "lucide-react";
 import { ArgusLogo } from "./ArgusLogo";
 import { ViewMode } from "../types";
@@ -122,6 +123,18 @@ async def run_agent(prompt: str) -> str:
             >
               <SlidersHorizontal className="h-3.5 w-3.5 text-zinc-400" />
               <span>C2 Governance Lab</span>
+            </button>
+
+            <button
+              onClick={() => {
+                sessionStorage.removeItem("argus_boot_shown");
+                window.location.reload();
+              }}
+              className="flex items-center gap-2 rounded-md border border-[#2a2a34] bg-[#141418] hover:bg-[#1c1c24] px-4 py-2 text-xs font-medium text-zinc-300 transition-colors cursor-pointer font-sans"
+              title="Replay the high-speed system initialization sequence"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-emerald-400" />
+              <span>Replay Intro</span>
             </button>
           </div>
         </div>
