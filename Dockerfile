@@ -33,10 +33,10 @@ COPY --from=frontend-builder /app/dashboard/dist ./dashboard/dist
 
 RUN mkdir -p /app/.argus_logs
 
-EXPOSE 8000
+EXPOSE 8000 7860
 
 HEALTHCHECK --interval=15s --timeout=5s --retries=3 --start-period=5s \
-    CMD curl -f http://localhost:8000/healthz || exit 1
+    CMD curl -f http://localhost:${PORT:-8000}/healthz || exit 1
 
 ENTRYPOINT ["python", "-m", "argus"]
 CMD ["serve", "--host", "0.0.0.0", "--port", "8000"]

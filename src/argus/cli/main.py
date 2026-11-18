@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 
@@ -172,13 +173,16 @@ def handle_serve(args: argparse.Namespace) -> int:
     """Start the Uvicorn ASGI server for the Argus Control Plane application."""
     import uvicorn
 
-    sys.stdout.write(f"\n[Argus] Launching Control Plane on http://{args.host}:{args.port}\n")
-    sys.stdout.write(f"[Argus] Dashboard: http://localhost:{args.port}/dashboard\n")
-    sys.stdout.write(f"[Argus] API Docs:  http://localhost:{args.port}/docs\n\n")
+    port = int(os.environ.get("PORT", str(args.port)))
+    host = os.environ.get("HOST", args.host)
+
+    sys.stdout.write(f"\n[Argus] Launching Control Plane on http://{host}:{port}\n")
+    sys.stdout.write(f"[Argus] Dashboard: http://localhost:{port}/dashboard\n")
+    sys.stdout.write(f"[Argus] API Docs:  http://localhost:{port}/docs\n\n")
     uvicorn.run(
         "argus.api.app:app",
-        host=args.host,
-        port=args.port,
+        host=host,
+        port=port,
         reload=args.reload,
         workers=args.workers if not args.reload else 1,
     )
