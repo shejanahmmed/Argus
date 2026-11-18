@@ -618,6 +618,31 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleExportAuditLog = useCallback(
+    async (sessionId: string) => {
+      try {
+        const res = await authFetch(`/api/v1/c2/${sessionId}/audit-log/export?format=json`);
+        if (res.ok) {
+          const blob = await res.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `audit_${sessionId}.json`;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+          setStatusMessage(`Exported audit ledger for session ${sessionId.substring(0, 8)}`);
+        } else {
+          setStatusMessage("Failed to export audit ledger.");
+        }
+      } catch {
+        setStatusMessage("Error downloading audit log.");
+      }
+    },
+    [authFetch]
+  );
+
   return (
     <div className="flex flex-col min-h-screen bg-[#09090b] text-[#f4f4f5]">
       <Header
@@ -846,6 +871,7 @@ export const App: React.FC = () => {
         storageDiagnostics={storageDiagnostics}
         systemReady={systemReady}
         onSelectView={(view) => setActiveView(view)}
+        onExportAuditLog={handleExportAuditLog}
       />
     </div>
   );

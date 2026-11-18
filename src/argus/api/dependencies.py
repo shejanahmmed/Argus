@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Header, HTTPException, status
+from fastapi import Header, HTTPException, Query, status
 
 from argus.adapters_infra.in_memory import (
     InMemoryAuditStore,
@@ -148,21 +148,29 @@ def get_container() -> AppContainer:
 
 def get_tenant_context(
     authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+    token: Annotated[str | None, Query()] = None,
     baggage: Annotated[str | None, Header(alias="baggage")] = None,
     x_tenant_id: Annotated[str | None, Header(alias="X-Tenant-ID")] = None,
     x_workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
     x_actor_id: Annotated[str | None, Header(alias="X-Actor-ID")] = None,
     x_role: Annotated[str | None, Header(alias="X-Role")] = None,
 ) -> TenantContext:
-    """Extract authenticated TenantContext from Bearer token, explicit headers, or W3C baggage."""
+    """Extract authenticated TenantContext from Bearer token, query token,
+    explicit headers, or W3C baggage.
+    """
+    raw_token: str | None = None
     if authorization and authorization.lower().startswith("bearer "):
-        token = authorization[7:].strip()
+        raw_token = authorization[7:].strip()
+    elif token:
+        raw_token = token.strip()
+
+    if raw_token:
         try:
-            return _container.authenticator.verify_token(token)
+            return _container.authenticator.verify_token(raw_token)
         except AuthorizationError as err:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Invalid or expired Bearer token: {err}",
+                detail=f"Invalid or expired token: {err}",
                 headers={"WWW-Authenticate": "Bearer"},
             ) from err
 

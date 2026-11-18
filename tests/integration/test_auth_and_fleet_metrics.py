@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -13,9 +15,12 @@ from argus.security.auth import HmacTokenAuthenticator
 
 
 @pytest.fixture(autouse=True)
-def reset_app_state() -> None:
-    """Ensure clean container state before each test."""
+def reset_app_state() -> Generator[None, None, None]:
+    """Ensure clean container state before and after each test."""
     container = get_container()
+    container.settings = ArgusSettings(env=ArgusEnvironment.DEVELOPMENT)
+    container.reset()
+    yield
     container.settings = ArgusSettings(env=ArgusEnvironment.DEVELOPMENT)
     container.reset()
 
@@ -186,3 +191,34 @@ async def test_metrics_aggregates_across_multiple_tenants() -> None:
         assert metrics_resp.status_code == 200
         assert "argus_sessions_total 2" in metrics_resp.text
         assert "argus_sessions_running 2" in metrics_resp.text
+
+
+@pytest.mark.asyncio
+async def test_auth_via_query_token_parameter() -> None:
+    """Verify ?token= query parameter authentication in production mode."""
+    container = get_container()
+    prod_secret = "prod-super-secure-test-secret-key-that-is-at-least-32-bytes-long"
+    container.settings = ArgusSettings(
+        env=ArgusEnvironment.PRODUCTION,
+        allow_anonymous=False,
+        auth_secret=prod_secret,
+    )
+    container.authenticator = HmacTokenAuthenticator(prod_secret)
+    admin_ctx = TenantContext(
+        tenant_id="prod_corp",
+        workspace_id="prod_ws",
+        actor_id="prod_admin",
+        role=Role.ADMIN,
+    )
+    token = container.authenticator.issue_token(admin_ctx)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        resp = await client.get(f"/api/v1/auth/me?token={token}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["tenant_id"] == "prod_corp"
+        assert data["workspace_id"] == "prod_ws"
+        assert data["role"] == "ADMIN"
+
