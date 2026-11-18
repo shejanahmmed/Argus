@@ -8,9 +8,10 @@ import {
   CheckCircle2,
   Lock,
   Cpu,
+  BookOpen,
 } from "lucide-react";
 import { ArgusLogo } from "./ArgusLogo";
-import { AgentSession, StorageDiagnostics } from "../types";
+import { AgentSession, StorageDiagnostics, ViewMode } from "../types";
 
 export interface FooterProps {
   wsConnected: boolean;
@@ -22,6 +23,7 @@ export interface FooterProps {
   storageDiagnostics?: StorageDiagnostics | null;
   systemReady?: boolean;
   onExportAuditLog?: (sessionId: string) => void;
+  onSelectView?: (view: ViewMode) => void;
 }
 
 export const Footer: React.FC<FooterProps> = ({
@@ -34,6 +36,7 @@ export const Footer: React.FC<FooterProps> = ({
   storageDiagnostics,
   systemReady = true,
   onExportAuditLog,
+  onSelectView,
 }) => {
   const activeCount = sessions.filter((s) => s.status === "RUNNING").length;
   const pausedCount = sessions.filter((s) => s.status === "PAUSED_C2").length;
@@ -207,6 +210,16 @@ export const Footer: React.FC<FooterProps> = ({
         <div className="flex flex-wrap items-center gap-2 text-zinc-400">
           {/* Interactive Endpoints Group */}
           <div className="flex items-center gap-1 bg-[#121215] p-0.5 rounded border border-[#222228]">
+            {onSelectView && (
+              <button
+                onClick={() => onSelectView("GUIDE")}
+                className="px-2 py-0.5 rounded text-[10px] text-emerald-400 hover:text-emerald-200 hover:bg-[#1a1a20] transition-colors flex items-center gap-1 cursor-pointer"
+                title="Open Operator Runbook & Architecture Guide"
+              >
+                <BookOpen className="h-2.5 w-2.5 text-emerald-400" />
+                Guide
+              </button>
+            )}
             <a
               href="/docs"
               target="_blank"

@@ -8,7 +8,7 @@ export type SessionStatus =
 
 export type AgentFramework = "langgraph" | "lcel" | "crewai" | "autogpt" | "mcp" | "custom";
 
-export type ViewMode = "ALL" | "TOPOLOGY" | "C2_LAB" | "FINOPS";
+export type ViewMode = "ALL" | "TOPOLOGY" | "C2_LAB" | "FINOPS" | "GUIDE";
 
 export interface AgentSession {
   session_id: string;

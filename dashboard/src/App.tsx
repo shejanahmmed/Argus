@@ -7,6 +7,7 @@ import { C2ControlPanel } from "./components/C2ControlPanel";
 import { RoiAndBenchmarks } from "./components/RoiAndBenchmarks";
 import { LogWaterfall } from "./components/LogWaterfall";
 import { Footer } from "./components/Footer";
+import { HowToUseGuide } from "./components/HowToUseGuide";
 import {
   AgentSession,
   ArgusSpan,
@@ -779,6 +780,16 @@ export const App: React.FC = () => {
             />
           </div>
         )}
+
+        {/* VIEW: GUIDE (Operator Quickstart & Capabilities) */}
+        {activeView === "GUIDE" && (
+          <HowToUseGuide
+            onSeedScenario={handleSeedScenario}
+            onSelectView={(view) => setActiveView(view)}
+            seeding={seeding}
+            hasSessions={sessions.length > 0}
+          />
+        )}
       </main>
 
       {/* Floating Status Notification Toast */}
@@ -834,6 +845,7 @@ export const App: React.FC = () => {
         storageBackend={storageBackend}
         storageDiagnostics={storageDiagnostics}
         systemReady={systemReady}
+        onSelectView={(view) => setActiveView(view)}
       />
     </div>
   );
