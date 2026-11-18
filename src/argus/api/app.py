@@ -34,6 +34,32 @@ from argus.core.errors import (
 from argus.core.schemas import SessionStatus
 
 
+def resolve_dashboard_dist() -> Path | None:
+    """Find compiled dashboard distribution across dev, test, and container environments."""
+    candidates = (
+        Path.cwd() / "dashboard" / "dist",
+        Path(__file__).resolve().parents[3] / "dashboard" / "dist",
+        Path("/app/dashboard/dist"),
+    )
+    for candidate in candidates:
+        if candidate.exists() and (candidate / "index.html").exists():
+            return candidate
+    return None
+
+
+def resolve_license_path() -> Path | None:
+    """Find the LICENSE file across dev, test, and container environments."""
+    candidates = (
+        Path.cwd() / "LICENSE",
+        Path(__file__).resolve().parents[3] / "LICENSE",
+        Path("/app/LICENSE"),
+    )
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def create_app() -> FastAPI:
     """Instantiate and configure the Argus Control Plane FastAPI application."""
     app = FastAPI(
@@ -147,8 +173,8 @@ def create_app() -> FastAPI:
     app.include_router(docs_router)
 
     # Mount compiled dashboard UI if available
-    dashboard_dist = Path(__file__).resolve().parents[3] / "dashboard" / "dist"
-    if dashboard_dist.exists():
+    dashboard_dist = resolve_dashboard_dist()
+    if dashboard_dist is not None:
         assets_dir = dashboard_dist / "assets"
         if assets_dir.exists():
             app.mount(
@@ -207,8 +233,8 @@ def create_app() -> FastAPI:
                 )
 
     # Route official Apache-2.0 LICENSE file
-    license_file_path = Path(__file__).resolve().parents[3] / "LICENSE"
-    if license_file_path.exists():
+    license_file_path = resolve_license_path()
+    if license_file_path is not None:
 
         @app.get("/LICENSE", response_class=FileResponse, tags=["System"], include_in_schema=False)
         @app.get("/license", response_class=FileResponse, tags=["System"], include_in_schema=False)
@@ -312,12 +338,14 @@ def create_app() -> FastAPI:
     @app.get("/", tags=["System"])
     async def root_index(request: Request) -> Any:
         """Root API summary or automatic browser redirect to dashboard."""
-        accept = request.headers.get("accept", "")
-        dashboard_dist = Path(__file__).resolve().parents[3] / "dashboard" / "dist"
-        if "text/html" in accept and dashboard_dist.exists():
-            return RedirectResponse(
-                url="/dashboard", status_code=status.HTTP_307_TEMPORARY_REDIRECT
-            )
+        dashboard_dist = resolve_dashboard_dist()
+        if dashboard_dist is not None:
+            accept = request.headers.get("accept", "")
+            # If opened in a web browser, redirect to the visual dashboard
+            if "text/html" in accept:
+                return RedirectResponse(
+                    url="/dashboard", status_code=status.HTTP_307_TEMPORARY_REDIRECT
+                )
 
         return {
             "name": "Argus C2 Control Plane API",
