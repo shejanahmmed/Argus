@@ -18,20 +18,28 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     ARGUS_ENV=production \
     ARGUS_STORAGE_BACKEND=sqlite \
-    ARGUS_DB_PATH=/app/.argus_logs/argus.db
+    ARGUS_DB_PATH=/app/.argus_logs/argus.db \
+    HOME=/home/argus
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml aboutArgus.md ./
+# Create unprivileged system user (UID 1000 for Kubernetes, Linux, and Hugging Face Spaces compatibility)
+RUN useradd -m -u 1000 -s /bin/bash argus && \
+    mkdir -p /app/.argus_logs && \
+    chown -R argus:argus /app /home/argus
+
+COPY LICENSE pyproject.toml aboutArgus.md ./
 COPY src/ ./src/
 
 RUN pip install --no-cache-dir .
 
-COPY --from=frontend-builder /app/dashboard/dist ./dashboard/dist
+COPY --from=frontend-builder --chown=argus:argus /app/dashboard/dist ./dashboard/dist
 
-RUN mkdir -p /app/.argus_logs
+RUN chown -R argus:argus /app
+
+USER 1000:1000
 
 EXPOSE 8000 7860
 

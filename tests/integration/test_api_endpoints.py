@@ -1702,4 +1702,26 @@ async def test_openinference_ingestion_and_sdk_lifecycle(
         assert "ExecuteRiskCheck" in csv_str
 
 
+@pytest.mark.asyncio
+async def test_transport_security_and_gzip_compression() -> None:
+    """Verify OWASP defensive headers and GZip transport compression."""
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        # 1. Verify OWASP Security Headers on standard probe
+        res = await client.get("/healthz")
+        assert res.status_code == 200
+        assert res.headers.get("x-content-type-options") == "nosniff"
+        assert res.headers.get("x-frame-options") == "SAMEORIGIN"
+        assert res.headers.get("x-xss-protection") == "1; mode=block"
+        assert res.headers.get("referrer-policy") == "strict-origin-when-cross-origin"
+        assert "camera=()" in res.headers.get("permissions-policy", "")
+
+        # 2. Verify GZip compression on payload > 1000 bytes
+        res_gzip = await client.get("/openapi.json", headers={"Accept-Encoding": "gzip"})
+        assert res_gzip.status_code == 200
+        assert res_gzip.headers.get("content-encoding") == "gzip"
+
+
+
 

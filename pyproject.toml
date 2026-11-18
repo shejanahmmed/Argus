@@ -40,6 +40,9 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 cache_dir = ".tmp/pytest_cache"
 addopts = "-ra -q"
+filterwarnings = [
+    "ignore:.*httpx.*starlette.testclient.*:UserWarning",
+]
 
 [tool.mypy]
 python_version = "3.11"

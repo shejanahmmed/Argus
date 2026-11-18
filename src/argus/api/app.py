@@ -9,6 +9,8 @@ from typing import Any
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
+from starlette.middleware.gzip import GZipMiddleware
+from starlette.responses import Response
 from starlette.staticfiles import StaticFiles
 
 from argus.api.dependencies import get_container
@@ -42,7 +44,10 @@ def create_app() -> FastAPI:
         version="0.1.0",
     )
 
-    # Permit frontend dashboard cross-origin requests
+    # 1. Automatic GZip compression for responses > 1000 bytes
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+    # 2. Permit frontend dashboard cross-origin requests
     container = get_container()
     app.add_middleware(
         CORSMiddleware,
@@ -51,6 +56,22 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # 3. Defensive OWASP Security Headers (MIME protection, clickjacking defense, referrers)
+    @app.middleware("http")
+    async def security_headers_middleware(
+        request: Request,
+        call_next: Callable[[Request], Coroutine[Any, Any, Response]],
+    ) -> Response:
+        response: Response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = (
+            "camera=(), microphone=(), geolocation=(), payment=()"
+        )
+        return response
 
     # Global domain exception handlers
     @app.exception_handler(EntityNotFoundError)

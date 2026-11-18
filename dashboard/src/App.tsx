@@ -818,7 +818,7 @@ export const App: React.FC = () => {
 
         return (
           <div
-            className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-lg border ${borderClass} px-4 py-3 text-xs text-zinc-100 shadow-2xl backdrop-blur-md transition-all animate-in fade-in slide-in-from-bottom-2`}
+            className={`fixed bottom-16 right-6 z-50 flex items-center gap-3 rounded-lg border ${borderClass} px-4 py-3 text-xs text-zinc-100 shadow-2xl backdrop-blur-md transition-all animate-in fade-in slide-in-from-bottom-2`}
           >
             <span className={`h-2 w-2 rounded-full ${dotClass} shrink-0`} />
             <span className="font-mono text-[11px] max-w-md leading-relaxed">
