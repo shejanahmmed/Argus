@@ -6,6 +6,7 @@ import { LangGraphVisualizer } from "./components/LangGraphVisualizer";
 import { C2ControlPanel } from "./components/C2ControlPanel";
 import { RoiAndBenchmarks } from "./components/RoiAndBenchmarks";
 import { LogWaterfall } from "./components/LogWaterfall";
+import { Footer } from "./components/Footer";
 import {
   AgentSession,
   ArgusSpan,
@@ -823,28 +824,17 @@ export const App: React.FC = () => {
         );
       })()}
 
-      {/* Utilitarian Footer */}
-      <footer className="border-t border-[#222228] bg-[#09090b] px-6 py-3 flex flex-wrap justify-between items-center gap-4 text-[11px] text-zinc-500 font-mono">
-        <div className="flex items-center gap-2">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-          <span className="text-zinc-400 font-sans font-medium">Argus AgentOps C2</span>
-          <span className="text-zinc-600">•</span>
-          <span>v0.1.0-alpha</span>
-          <span className="text-zinc-600">•</span>
-          <span>$0 Open-Source Core</span>
-        </div>
-        <div className="flex items-center gap-4 text-zinc-500">
-          <span>OTel GenAI</span>
-          <span>•</span>
-          <span>Arize Phoenix</span>
-          <span>•</span>
-          <span>LangGraph</span>
-          <span>•</span>
-          <span>RFC 6902</span>
-          <span>•</span>
-          <span>SHA-256 Ledger</span>
-        </div>
-      </footer>
+      {/* Enterprise Utilitarian C2 Footer */}
+      <Footer
+        wsConnected={wsConnected}
+        sessions={sessions}
+        selectedSessionId={selectedSessionId}
+        tenantId={tenantId}
+        workspaceId={workspaceId}
+        storageBackend={storageBackend}
+        storageDiagnostics={storageDiagnostics}
+        systemReady={systemReady}
+      />
     </div>
   );
 };

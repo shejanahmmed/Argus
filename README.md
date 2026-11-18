@@ -160,3 +160,23 @@ async def execute_agent_step(task_prompt: str) -> str:
     # Argus evaluates loops, enforces budgets, and intercepts destructive tools
     return "Task completed"
 ```
+
+---
+
+<div align="center">
+
+### Enterprise AgentOps & Autonomous Governance Plane
+
+[![License Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-zinc?style=flat-square)](LICENSE)
+[![Zero-Spend Architecture](https://img.shields.io/badge/Spend-$0_Monetary_Budget-emerald?style=flat-square)](aboutArgus.md)
+[![Protocol MCP-2024-11](https://img.shields.io/badge/MCP-2024--11--05-blue?style=flat-square)](aboutArgus.md)
+[![Protocol OTel-GenAI](https://img.shields.io/badge/OTel-GenAI_v1.28-purple?style=flat-square)](aboutArgus.md)
+[![Audit Ledger SHA-256](https://img.shields.io/badge/Audit-SHA--256_Hash--Chained-amber?style=flat-square)](aboutArgus.md)
+
+[Architecture Guide](aboutArgus.md) • [Dashboard Console](dashboard/) • [API Documentation](file:///docs) • [Metrics Exposition](file:///metrics) • [License Terms](LICENSE)
+
+<br/>
+
+<sub>Copyright © 2026 Shejan Ahmmed / Argus Contributors. Released under the Apache 2.0 License.</sub>
+
+</div>
