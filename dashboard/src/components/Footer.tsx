@@ -9,6 +9,7 @@ import {
   Cpu,
   BookOpen,
   Sparkles,
+  FileCode,
 } from "lucide-react";
 import { ArgusLogo } from "./ArgusLogo";
 import { AgentSession, StorageDiagnostics, ViewMode } from "../types";
@@ -207,7 +208,19 @@ export const Footer: React.FC<FooterProps> = ({
         </div>
 
         {/* Right Sector: Live Endpoints, Audit Trigger, and Attribution */}
-        <div className="flex flex-wrap items-center gap-2 text-zinc-400">
+        <div className="flex flex-wrap items-center gap-2.5 text-zinc-400">
+          {/* Featured /docs Pitch Deck Button */}
+          {onSelectView && (
+            <button
+              onClick={() => onSelectView("DOCS")}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-500/40 text-emerald-300 hover:text-white text-[11px] font-mono font-medium transition-all shadow-[0_0_12px_rgba(16,185,129,0.15)] cursor-pointer"
+              title="Open Live /docs Pitch Deck, Tech Whitepaper & Telemetry"
+            >
+              <Sparkles className="h-3 w-3 text-emerald-400" />
+              <span>/docs Pitch Deck</span>
+            </button>
+          )}
+
           {/* Interactive Endpoints Group */}
           <div className="flex items-center gap-1 bg-[#121215] p-0.5 rounded border border-[#222228]">
             {onSelectView && (
@@ -220,27 +233,16 @@ export const Footer: React.FC<FooterProps> = ({
                 Guide
               </button>
             )}
-            {onSelectView ? (
-              <button
-                onClick={() => onSelectView("DOCS")}
-                className="px-2 py-0.5 rounded text-[10px] text-zinc-300 hover:text-white hover:bg-[#1a1a20] transition-colors flex items-center gap-1 cursor-pointer"
-                title="Open Live /docs Pitch Deck, Tech Whitepaper & Telemetry"
-              >
-                <Sparkles className="h-2.5 w-2.5 text-emerald-400" />
-                /docs
-              </button>
-            ) : (
-              <a
-                href="/docs"
-                target="_blank"
-                rel="noreferrer"
-                className="px-2 py-0.5 rounded text-[10px] text-zinc-400 hover:text-zinc-100 hover:bg-[#1a1a20] transition-colors flex items-center gap-1"
-                title="Live /docs Module & API Reference"
-              >
-                <Sparkles className="h-2.5 w-2.5 text-emerald-400" />
-                /docs
-              </a>
-            )}
+            <a
+              href="/api/docs"
+              target="_blank"
+              rel="noreferrer"
+              className="px-2 py-0.5 rounded text-[10px] text-zinc-400 hover:text-zinc-100 hover:bg-[#1a1a20] transition-colors flex items-center gap-1"
+              title="Interactive OpenAPI 3.1 Swagger UI"
+            >
+              <FileCode className="h-2.5 w-2.5 text-zinc-500" />
+              API Specs
+            </a>
             <a
               href="/metrics"
               target="_blank"
