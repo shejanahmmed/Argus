@@ -30,7 +30,7 @@ RUN useradd -m -u 1000 -s /bin/bash argus && \
     mkdir -p /app/.argus_logs && \
     chown -R argus:argus /app /home/argus
 
-COPY LICENSE pyproject.toml aboutArgus.md ./
+COPY LICENSE pyproject.toml README.md ./
 COPY src/ ./src/
 
 RUN pip install --no-cache-dir .
