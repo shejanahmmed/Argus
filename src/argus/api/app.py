@@ -206,6 +206,16 @@ def create_app() -> FastAPI:
                     include_in_schema=False,
                 )
 
+    # Route official Apache-2.0 LICENSE file
+    license_file_path = Path(__file__).resolve().parents[3] / "LICENSE"
+    if license_file_path.exists():
+
+        @app.get("/LICENSE", response_class=FileResponse, tags=["System"], include_in_schema=False)
+        @app.get("/license", response_class=FileResponse, tags=["System"], include_in_schema=False)
+        async def serve_license() -> FileResponse:
+            """Serve the official Apache-2.0 open-source license file."""
+            return FileResponse(license_file_path, media_type="text/plain")
+
     @app.get("/healthz", tags=["System"])
     async def health_check() -> dict[str, str]:
         """Liveness probe endpoint for container orchestrators."""
