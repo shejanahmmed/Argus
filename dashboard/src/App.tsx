@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { X } from "lucide-react";
 import { Header } from "./components/Header";
 import { FleetOverview } from "./components/FleetOverview";
@@ -207,7 +207,12 @@ export const App: React.FC = () => {
         if (spansRes.ok) {
           const sData: ArgusSpan[] = await spansRes.json();
           setSpans(sData);
-          if (sData.length > 0) setSelectedSpan(sData[sData.length - 1]);
+          setSelectedSpan((prev) => {
+            if (prev && sData.some((s) => s.span_id === prev.span_id)) {
+              return prev;
+            }
+            return sData.length > 0 ? sData[sData.length - 1] : null;
+          });
         }
         if (toolsRes.ok) {
           const tData: PendingToolCall[] = await toolsRes.json();
@@ -299,6 +304,26 @@ export const App: React.FC = () => {
     }
   }, [selectedSessionId, businessValueUsd, fetchSessionDetails]);
 
+  const selectedSessionIdRef = useRef(selectedSessionId);
+  useEffect(() => {
+    selectedSessionIdRef.current = selectedSessionId;
+  }, [selectedSessionId]);
+
+  const fetchSessionDetailsRef = useRef(fetchSessionDetails);
+  useEffect(() => {
+    fetchSessionDetailsRef.current = fetchSessionDetails;
+  }, [fetchSessionDetails]);
+
+  const fetchSessionsRef = useRef(fetchSessions);
+  useEffect(() => {
+    fetchSessionsRef.current = fetchSessions;
+  }, [fetchSessions]);
+
+  const fetchCloudWatchLogsRef = useRef(fetchCloudWatchLogs);
+  useEffect(() => {
+    fetchCloudWatchLogsRef.current = fetchCloudWatchLogs;
+  }, [fetchCloudWatchLogs]);
+
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = window.location.host;
@@ -338,10 +363,12 @@ export const App: React.FC = () => {
               data.channel === "c2.dead_man_switch_triggered" ||
               data.channel === "c2.lease_expired"
             ) {
-              fetchSessions();
-              if (selectedSessionId) fetchSessionDetails(selectedSessionId);
+              fetchSessionsRef.current();
+              if (selectedSessionIdRef.current) {
+                fetchSessionDetailsRef.current(selectedSessionIdRef.current);
+              }
             } else if (data.channel === "telemetry.cloudwatch") {
-              fetchCloudWatchLogs();
+              fetchCloudWatchLogsRef.current();
             }
           } catch {
             // Non-JSON frame
@@ -351,12 +378,14 @@ export const App: React.FC = () => {
         ws.onclose = () => {
           setWsConnected(false);
           if (pingInterval) clearInterval(pingInterval);
+          fetch("/healthz").catch(() => {});
           reconnectTimer = window.setTimeout(connect, 3000);
         };
 
         ws.onerror = () => {
           setWsConnected(false);
           if (pingInterval) clearInterval(pingInterval);
+          fetch("/healthz").catch(() => {});
           ws?.close();
         };
       } catch {
@@ -373,7 +402,7 @@ export const App: React.FC = () => {
       if (pingInterval) clearInterval(pingInterval);
       ws?.close();
     };
-  }, [fetchSessions, fetchSessionDetails, fetchCloudWatchLogs, selectedSessionId]);
+  }, [tenantId, workspaceId, authToken]);
 
   const handleSimulateLoopStep = async () => {
     if (!selectedSessionId) return;

@@ -173,6 +173,9 @@ def handle_serve(args: argparse.Namespace) -> int:
     """Start the Uvicorn ASGI server for the Argus Control Plane application."""
     import uvicorn
 
+    os.environ.setdefault("ARGUS_STORAGE_BACKEND", "sqlite")
+    os.environ.setdefault("ARGUS_ALLOW_ANONYMOUS", "true")
+
     port = int(os.environ.get("PORT", str(args.port)))
     host = os.environ.get("HOST", args.host)
 

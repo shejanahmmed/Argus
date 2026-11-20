@@ -259,11 +259,6 @@ export const LangGraphVisualizer: React.FC<LangGraphVisualizerProps> = ({
     [spans]
   );
 
-  const flowKey = useMemo(
-    () => spans.map((s) => s.span_id).join("-") || "empty",
-    [spans]
-  );
-
   return (
     <div className="rounded-xl border border-[#222228] bg-[#111114] flex flex-col shadow-sm overflow-hidden">
       {/* Panel Header */}
@@ -367,15 +362,15 @@ export const LangGraphVisualizer: React.FC<LangGraphVisualizerProps> = ({
       </div>
 
       {/* Main Canvas Viewport */}
-      {spans.length === 0 ? (
-        <div className="flex h-[420px] items-center justify-center text-xs text-zinc-500">
-          Select an agent session to inspect execution graph and telemetry traces
-        </div>
-      ) : displayMode === "DAG" ? (
+      {displayMode === "DAG" ? (
         <div className="relative h-[420px] w-full bg-[#09090b]">
+          {spans.length === 0 && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center text-xs text-zinc-500 bg-[#09090b]/80 backdrop-blur-xs">
+              Select an agent session or seed a scenario to inspect execution graph
+            </div>
+          )}
           <div className="absolute inset-0">
             <ReactFlow
-              key={flowKey}
               nodes={nodes}
               edges={edges}
               fitView
@@ -392,6 +387,10 @@ export const LangGraphVisualizer: React.FC<LangGraphVisualizerProps> = ({
               <Controls />
             </ReactFlow>
           </div>
+        </div>
+      ) : spans.length === 0 ? (
+        <div className="flex h-[420px] items-center justify-center text-xs text-zinc-500">
+          Select an agent session or seed a scenario to inspect execution waterfall
         </div>
       ) : (
         <div className="h-[420px] overflow-y-auto p-4 space-y-2 bg-[#09090b]">

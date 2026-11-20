@@ -16,7 +16,8 @@ WORKDIR /app
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    ARGUS_ENV=production \
+    ARGUS_ENV=development \
+    ARGUS_ALLOW_ANONYMOUS=true \
     ARGUS_STORAGE_BACKEND=sqlite \
     ARGUS_DB_PATH=/app/.argus_logs/argus.db \
     HOME=/home/argus

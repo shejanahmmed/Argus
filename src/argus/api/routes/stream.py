@@ -34,12 +34,22 @@ async def websocket_stream(
         try:
             ctx = container.authenticator.verify_token(token)
         except AuthorizationError:
-            await websocket.close(
-                code=status.WS_1008_POLICY_VIOLATION,
-                reason="Invalid or expired bearer token",
+            if not container.settings.allow_anonymous:
+                await websocket.close(
+                    code=status.WS_1008_POLICY_VIOLATION,
+                    reason="Invalid or expired bearer token",
+                )
+                return
+            ctx = TenantContext(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                actor_id=actor_id,
+                role=Role.OPERATOR,
             )
-            return
-    elif container.settings.env in (ArgusEnvironment.DEVELOPMENT, ArgusEnvironment.TESTING):
+    elif (
+        container.settings.allow_anonymous
+        or container.settings.env in (ArgusEnvironment.DEVELOPMENT, ArgusEnvironment.TESTING)
+    ):
         ctx = TenantContext(
             tenant_id=tenant_id,
             workspace_id=workspace_id,

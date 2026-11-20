@@ -194,9 +194,18 @@ class ArgusSettings(BaseModel):
         elif raw_anon in ("0", "false", "no"):
             allow_anonymous = False
         else:
-            allow_anonymous = env == ArgusEnvironment.DEVELOPMENT
+            allow_anonymous = (
+                env in (ArgusEnvironment.DEVELOPMENT, ArgusEnvironment.TESTING)
+                or os.environ.get("RENDER") is not None
+            )
 
-        storage_backend = os.environ.get("ARGUS_STORAGE_BACKEND", "memory").strip().lower()
+        raw_backend = os.environ.get("ARGUS_STORAGE_BACKEND", "").strip().lower()
+        if raw_backend:
+            storage_backend = raw_backend
+        elif os.environ.get("RENDER"):
+            storage_backend = "sqlite"
+        else:
+            storage_backend = "memory"
         db_path = os.environ.get("ARGUS_DB_PATH", ".argus_logs/argus.db").strip()
 
         raw_cors = os.environ.get("ARGUS_CORS_ORIGINS", "*").strip()
